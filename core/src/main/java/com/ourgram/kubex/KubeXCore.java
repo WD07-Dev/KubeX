@@ -11,6 +11,7 @@ import com.ourgram.kubex.workspace.KubeXWorkspaceInitializer;
 import com.ourgram.kubex.workspace.KubeXWorkspaceSyncResult;
 import com.ourgram.kubex.workspace.KubeXWorkspaceSyncService;
 import com.ourgram.kubex.compiler.KubeXCompiler;
+import java.util.function.Consumer;
 
 public final class KubeXCore {
     private final KubeXWorkspaceInitializer workspaceInitializer;
@@ -47,6 +48,10 @@ public final class KubeXCore {
 
     public KubeXWorkspaceBuildResult buildWorkspace(java.nio.file.Path gameRoot) {
         return workspaceBuildService.build(gameRoot);
+    }
+
+    public KubeXWorkspaceBuildResult buildWorkspace(java.nio.file.Path gameRoot, Consumer<String> progressListener) {
+        return workspaceBuildService.build(gameRoot, progressListener);
     }
 
     public KubeXWorkspaceSyncResult syncWorkspace(java.nio.file.Path gameRoot) {

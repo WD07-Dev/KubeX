@@ -104,7 +104,10 @@ public final class KubeXCommands {
         try {
             source.sendSuccess(() -> Component.literal("[KubeX] Running workspace build..."), false);
 
-            var result = core.buildWorkspace(source.getServer().getServerDirectory());
+            var result = core.buildWorkspace(
+                source.getServer().getServerDirectory(),
+                message -> source.sendSuccess(() -> Component.literal("[KubeX] " + message), false)
+            );
             if(!result.success()) {
                 source.sendFailure(Component.literal("[KubeX] Build failed: " + result.message()));
                 return 0;
