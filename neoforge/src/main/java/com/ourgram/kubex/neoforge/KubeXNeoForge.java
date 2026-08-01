@@ -1,10 +1,13 @@
 package com.ourgram.kubex.neoforge;
 
-import com.ourgram.kubex.KubeXCore;
+import com.ourgram.kubex.app.KubeXDebugManager;
+import com.ourgram.kubex.app.KubeXDoctorManager;
+import com.ourgram.kubex.app.KubeXWorkspaceManager;
+import com.ourgram.kubex.workspace.KubeXDebugModeService;
 import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.common.Mod;
-import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.client.event.RegisterClientCommandsEvent;
+import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.RegisterCommandsEvent;
 import net.neoforged.neoforge.event.server.ServerStartedEvent;
 import org.apache.logging.log4j.LogManager;
@@ -16,18 +19,22 @@ public final class KubeXNeoForge {
     public static final Logger LOGGER = LogManager.getLogger(MOD_ID);
     public static ModContainer MOD_CONTAINER;
 
-    private final KubeXCore core;
+    private final KubeXWorkspaceManager workspaceManager;
     private final KubeXCommands commands;
 
     public KubeXNeoForge(ModContainer modContainer) {
         MOD_CONTAINER = modContainer;
-        this.core = new KubeXCore();
-        this.commands = new KubeXCommands(core);
+        KubeXDebugModeService debugModeService = new KubeXDebugModeService();
+        this.workspaceManager = new KubeXWorkspaceManager(debugModeService);
+        this.commands = new KubeXCommands(
+            workspaceManager,
+            new KubeXDebugManager(debugModeService),
+            new KubeXDoctorManager()
+        );
         NeoForge.EVENT_BUS.addListener(this::registerCommands);
         NeoForge.EVENT_BUS.addListener(this::registerClientCommands);
         NeoForge.EVENT_BUS.addListener(this::onServerStarted);
-        LOGGER.info("Initialized KubeX for platform {}", core.snapshot().primaryPlatform());
-        LOGGER.info("KubeX workspace mode is ready");
+        LOGGER.info("KubeX NeoForge mod initialized.");
     }
 
     private void registerCommands(RegisterCommandsEvent event) {
@@ -40,7 +47,7 @@ public final class KubeXNeoForge {
 
     private void onServerStarted(ServerStartedEvent event) {
         try {
-            var result = core.syncWorkspace(event.getServer().getServerDirectory());
+            var result = workspaceManager.sync(event.getServer().getServerDirectory());
             if(result.success()) {
                 LOGGER.info("Auto synced KubeX workspace: {}", result.message());
                 for(var publishedFile : result.publishedFiles()) {

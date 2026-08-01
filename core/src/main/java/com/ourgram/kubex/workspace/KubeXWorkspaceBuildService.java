@@ -1,8 +1,8 @@
 package com.ourgram.kubex.workspace;
 
+import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
-import java.io.BufferedReader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -36,20 +36,21 @@ public final class KubeXWorkspaceBuildService {
             }
 
             String npm = isWindows() ? "npm.cmd" : "npm";
-
             boolean installedDependencies = false;
+
             if(!Files.isDirectory(nodeModules)) {
                 progressListener.accept("Installing dependencies with npm install...");
                 run(workspaceRoot, progressListener, npm, "install");
                 progressListener.accept("npm install completed");
                 installedDependencies = true;
-            } else {
+            }else {
                 progressListener.accept("Skipping npm install (node_modules already exists)");
             }
 
             progressListener.accept("Running npm run build...");
             run(workspaceRoot, progressListener, npm, "run", "build");
             progressListener.accept("npm run build completed");
+
             return new KubeXWorkspaceBuildResult(
                 true,
                 workspaceRoot,
@@ -59,6 +60,7 @@ public final class KubeXWorkspaceBuildService {
             if(isMissingCommand(exception)) {
                 return new KubeXWorkspaceBuildResult(false, workspaceRoot, "Node.js를 설치해주세요 (npm/node was not found)");
             }
+
             return new KubeXWorkspaceBuildResult(false, workspaceRoot, failureMessage(exception));
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
@@ -68,8 +70,9 @@ public final class KubeXWorkspaceBuildService {
 
     private void run(Path workspaceRoot, Consumer<String> progressListener, String... command) throws IOException, InterruptedException {
         Process process = new ProcessBuilder(command)
-        .directory(workspaceRoot.toFile())
-        .redirectErrorStream(true).start();
+            .directory(workspaceRoot.toFile())
+            .redirectErrorStream(true)
+            .start();
 
         Deque<String> outputLines = new ArrayDeque<>();
         Thread readerThread = new Thread(() -> pumpOutput(process, progressListener, outputLines), "kubex-build-output");
@@ -78,6 +81,7 @@ public final class KubeXWorkspaceBuildService {
 
         boolean finished = process.waitFor(COMMAND_TIMEOUT.toMillis(), java.util.concurrent.TimeUnit.MILLISECONDS);
         readerThread.join(1000L);
+
         String output = String.join(System.lineSeparator(), outputLines).trim();
         if(!finished) {
             process.destroyForcibly();
@@ -94,9 +98,7 @@ public final class KubeXWorkspaceBuildService {
             String line;
             while((line = reader.readLine()) != null) {
                 String trimmed = line.trim();
-                if(trimmed.isBlank()) {
-                    continue;
-                }
+                if(trimmed.isBlank()) continue;
 
                 synchronized (outputLines) {
                     outputLines.addLast(trimmed);
@@ -155,9 +157,9 @@ public final class KubeXWorkspaceBuildService {
 
         String lower = message.toLowerCase(Locale.ROOT);
         return lower.contains("cannot run program")
-        || lower.contains("createprocess error=2")
-        || lower.contains("error=2")
-        || lower.contains("no such file or directory");
+            || lower.contains("createprocess error=2")
+            || lower.contains("error=2")
+            || lower.contains("no such file or directory");
     }
 
     private boolean isWindows() {
@@ -171,6 +173,7 @@ public final class KubeXWorkspaceBuildService {
             if(message != null && !message.isBlank()) return message;
             current = current.getCause();
         }
+
         return exception.getClass().getSimpleName();
     }
 }
