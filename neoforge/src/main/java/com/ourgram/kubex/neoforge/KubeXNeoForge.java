@@ -1,8 +1,8 @@
 package com.ourgram.kubex.neoforge;
 
-import com.ourgram.kubex.app.KubeXDebugManager;
-import com.ourgram.kubex.app.KubeXDoctorManager;
-import com.ourgram.kubex.app.KubeXWorkspaceManager;
+import com.ourgram.kubex.KubeXDebugManager;
+import com.ourgram.kubex.KubeXDoctorManager;
+import com.ourgram.kubex.KubeXWorkspaceManager;
 import com.ourgram.kubex.workspace.KubeXDebugModeService;
 import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.common.Mod;

@@ -1,4 +1,4 @@
-package com.ourgram.kubex.app;
+package com.ourgram.kubex;
 
 import java.io.IOException;
 import java.nio.file.Path;

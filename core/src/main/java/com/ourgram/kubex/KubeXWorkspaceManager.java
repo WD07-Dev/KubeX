@@ -1,4 +1,4 @@
-package com.ourgram.kubex.app;
+package com.ourgram.kubex;
 
 import java.nio.file.Path;
 import java.util.function.Consumer;
