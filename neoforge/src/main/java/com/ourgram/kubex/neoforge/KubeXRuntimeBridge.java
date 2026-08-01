@@ -3,7 +3,6 @@ package com.ourgram.kubex.neoforge;
 import com.ourgram.kubex.sourcemap.KubeXSourceMapLookupResult;
 import com.ourgram.kubex.sourcemap.KubeXSourceMapService;
 import net.neoforged.fml.loading.FMLPaths;
-
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -84,9 +83,7 @@ public final class KubeXRuntimeBridge {
     }
 
     private static String errorMessage(Object error) {
-        if(error == null) {
-            return "Unknown error";
-        }
+        if(error == null) return "Unknown error";
         return String.valueOf(error);
     }
 }
