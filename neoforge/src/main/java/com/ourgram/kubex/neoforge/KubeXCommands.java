@@ -9,6 +9,8 @@ import com.ourgram.kubex.workspace.KubeXInitMode;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.network.chat.Component;
+import net.neoforged.fml.loading.FMLPaths;
+import java.nio.file.Path;
 import java.util.function.Predicate;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -77,12 +79,13 @@ public final class KubeXCommands {
 
     private int init(CommandSourceStack source, KubeXInitMode mode) {
         try {
+            Path gameRoot = resolveGameRoot(source);
             source.sendSuccess(
                 () -> Component.literal("[KubeX] Initializing " + mode.id() + " workspace..."),
                 false
             );
 
-            var result = core.initializeWorkspace(source.getServer().getServerDirectory(), mode);
+            var result = core.initializeWorkspace(gameRoot, mode);
             if(!result.success()) {
                 source.sendFailure(Component.literal("[KubeX] Init failed: " + result.message()));
                 return 0;
@@ -102,10 +105,11 @@ public final class KubeXCommands {
 
     private int build(CommandSourceStack source) {
         try {
+            Path gameRoot = resolveGameRoot(source);
             source.sendSuccess(() -> Component.literal("[KubeX] Running workspace build..."), false);
 
             var result = core.buildWorkspace(
-                source.getServer().getServerDirectory(),
+                gameRoot,
                 message -> source.sendSuccess(() -> Component.literal("[KubeX] " + message), false)
             );
             if(!result.success()) {
@@ -123,7 +127,7 @@ public final class KubeXCommands {
 
     private int sync(CommandSourceStack source) {
         try {
-            var result = core.syncWorkspace(source.getServer().getServerDirectory());
+            var result = core.syncWorkspace(resolveGameRoot(source));
             if(!result.success()) {
                 source.sendFailure(Component.literal("[KubeX] Sync failed: " + result.message()));
                 return 0;
@@ -148,7 +152,7 @@ public final class KubeXCommands {
 
     private int doctor(CommandSourceStack source, String scriptGroup, int line, int column) {
         try {
-            var result = core.doctorSourceMap(source.getServer().getServerDirectory(), scriptGroup, line, column);
+            var result = core.doctorSourceMap(resolveGameRoot(source), scriptGroup, line, column);
             if(!result.success()) {
                 source.sendFailure(Component.literal("[KubeX] Doctor failed: " + result.message()));
                 return 0;
@@ -167,7 +171,7 @@ public final class KubeXCommands {
 
     private int toggleDebug(CommandSourceStack source) {
         try {
-            boolean enabled = core.toggleDebugMode(source.getServer().getServerDirectory());
+            boolean enabled = core.toggleDebugMode(resolveGameRoot(source));
             source.sendSuccess(() -> Component.literal("[KubeX] Debug mode " + (enabled ? "enabled" : "disabled")), false);
             return 1;
         } catch (Exception exception) {
@@ -178,7 +182,7 @@ public final class KubeXCommands {
 
     private int setDebug(CommandSourceStack source, boolean enabled) {
         try {
-            core.setDebugMode(source.getServer().getServerDirectory(), enabled);
+            core.setDebugMode(resolveGameRoot(source), enabled);
             source.sendSuccess(() -> Component.literal("[KubeX] Debug mode " + (enabled ? "enabled" : "disabled")), false);
             return 1;
         } catch (Exception exception) {
@@ -198,13 +202,14 @@ public final class KubeXCommands {
 
     private int doctorAuto(CommandSourceStack source, String position) {
         try {
+            Path gameRoot = resolveGameRoot(source);
             ParsedDoctorPosition parsed = parseDoctorPosition(position);
             if(parsed == null) {
                 source.sendFailure(Component.literal("[KubeX] Doctor failed: invalid position '" + position + "'"));
                 return 0;
             }
 
-            var result = core.doctorSourceMapAuto(source.getServer().getServerDirectory(), position, parsed.line(), parsed.column());
+            var result = core.doctorSourceMapAuto(gameRoot, position, parsed.line(), parsed.column());
             if(!result.success()) {
                 source.sendFailure(Component.literal("[KubeX] Doctor failed: " + result.message()));
                 return 0;
@@ -241,6 +246,14 @@ public final class KubeXCommands {
             return new ParsedDoctorPosition(line, column);
         } catch (NumberFormatException ignored) {
             return null;
+        }
+    }
+
+    private Path resolveGameRoot(CommandSourceStack source) {
+        try {
+            return source.getServer().getServerDirectory().toAbsolutePath().normalize();
+        } catch (IllegalStateException ignored) {
+            return FMLPaths.GAMEDIR.get().toAbsolutePath().normalize();
         }
     }
 
