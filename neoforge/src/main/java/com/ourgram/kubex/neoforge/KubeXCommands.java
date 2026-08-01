@@ -11,6 +11,8 @@ import net.minecraft.commands.Commands;
 import net.minecraft.network.chat.Component;
 import net.neoforged.fml.loading.FMLPaths;
 import java.nio.file.Path;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.function.Predicate;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -19,6 +21,11 @@ public final class KubeXCommands {
     private record ParsedDoctorPosition(int line, int column) {}
 
     private static final Pattern DOCTOR_POSITION_PATTERN = Pattern.compile("(?:^|[^0-9A-Za-z_./-])(?:[A-Za-z0-9_./-]+\\.js:)?(\\d+)(?::(\\d+))?(?:[^0-9]|$)");
+    private static final ExecutorService BACKGROUND_EXECUTOR = Executors.newSingleThreadExecutor(runnable -> {
+        Thread thread = new Thread(runnable, "kubex-worker");
+        thread.setDaemon(true);
+        return thread;
+    });
     private final KubeXCore core;
     private final KubeXReloadBridge reloadBridge;
 
@@ -78,51 +85,54 @@ public final class KubeXCommands {
     }
 
     private int init(CommandSourceStack source, KubeXInitMode mode) {
-        try {
-            Path gameRoot = resolveGameRoot(source);
-            source.sendSuccess(
-                () -> Component.literal("[KubeX] Initializing " + mode.id() + " workspace..."),
-                false
-            );
+        Path gameRoot = resolveGameRoot(source);
+        source.sendSuccess(
+            () -> Component.literal("[KubeX] Initializing " + mode.id() + " workspace..."),
+            false
+        );
 
-            var result = core.initializeWorkspace(gameRoot, mode);
-            if(!result.success()) {
-                source.sendFailure(Component.literal("[KubeX] Init failed: " + result.message()));
-                return 0;
+        BACKGROUND_EXECUTOR.execute(() -> {
+            try {
+                var result = core.initializeWorkspace(gameRoot, mode);
+                if(!result.success()) {
+                    source.sendFailure(Component.literal("[KubeX] Init failed: " + result.message()));
+                    return;
+                }
+
+                source.sendSuccess(
+                    () -> Component.literal("[KubeX] Initialized " + mode.id() + " workspace: " + result.workspaceRoot()),
+                    false
+                );
+                source.sendSuccess(() -> Component.literal("[KubeX] Next: edit kubex/src/... then run /kubex build"), false);
+            } catch (Exception exception) {
+                source.sendFailure(Component.literal("[KubeX] Init failed: " + failureMessage(exception)));
             }
-
-            source.sendSuccess(
-                () -> Component.literal("[KubeX] Initialized " + mode.id() + " workspace: " + result.workspaceRoot()),
-                false
-            );
-            source.sendSuccess(() -> Component.literal("[KubeX] Next: edit kubex/src/... then run /kubex build"), false);
-            return 1;
-        } catch (Exception exception) {
-            source.sendFailure(Component.literal("[KubeX] Init failed: " + failureMessage(exception)));
-            return 0;
-        }
+        });
+        return 1;
     }
 
     private int build(CommandSourceStack source) {
-        try {
-            Path gameRoot = resolveGameRoot(source);
-            source.sendSuccess(() -> Component.literal("[KubeX] Running workspace build..."), false);
+        Path gameRoot = resolveGameRoot(source);
+        source.sendSuccess(() -> Component.literal("[KubeX] Running workspace build..."), false);
 
-            var result = core.buildWorkspace(
-                gameRoot,
-                message -> source.sendSuccess(() -> Component.literal("[KubeX] " + message), false)
-            );
-            if(!result.success()) {
-                source.sendFailure(Component.literal("[KubeX] Build failed: " + result.message()));
-                return 0;
+        BACKGROUND_EXECUTOR.execute(() -> {
+            try {
+                var result = core.buildWorkspace(
+                    gameRoot,
+                    message -> source.sendSuccess(() -> Component.literal("[KubeX] " + message), false)
+                );
+                if(!result.success()) {
+                    source.sendFailure(Component.literal("[KubeX] Build failed: " + result.message()));
+                    return;
+                }
+
+                source.sendSuccess(() -> Component.literal("[KubeX] " + result.message()), false);
+                sync(source);
+            } catch (Exception exception) {
+                source.sendFailure(Component.literal("[KubeX] Build failed: " + failureMessage(exception)));
             }
-
-            source.sendSuccess(() -> Component.literal("[KubeX] " + result.message()), false);
-            return sync(source);
-        } catch (Exception exception) {
-            source.sendFailure(Component.literal("[KubeX] Build failed: " + failureMessage(exception)));
-            return 0;
-        }
+        });
+        return 1;
     }
 
     private int sync(CommandSourceStack source) {
@@ -135,7 +145,7 @@ public final class KubeXCommands {
 
             source.sendSuccess(
                 () -> Component.literal("[KubeX] " + result.message() + " (" + result.sourceMapCount() + " source maps)"),
-                true
+                false
             );
 
             if(!result.publishedFiles().isEmpty()) {
@@ -252,7 +262,7 @@ public final class KubeXCommands {
     private Path resolveGameRoot(CommandSourceStack source) {
         try {
             return source.getServer().getServerDirectory().toAbsolutePath().normalize();
-        } catch (IllegalStateException ignored) {
+        } catch (RuntimeException ignored) {
             return FMLPaths.GAMEDIR.get().toAbsolutePath().normalize();
         }
     }
