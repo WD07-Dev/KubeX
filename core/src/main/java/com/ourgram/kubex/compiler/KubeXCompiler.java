@@ -14,7 +14,6 @@ import dev.latvian.mods.rhino.ast.ExpressionStatement;
 import dev.latvian.mods.rhino.ast.ForLoop;
 import dev.latvian.mods.rhino.ast.FunctionCall;
 import dev.latvian.mods.rhino.ast.FunctionNode;
-import dev.latvian.mods.rhino.ast.InfixExpression;
 import dev.latvian.mods.rhino.ast.Name;
 import dev.latvian.mods.rhino.ast.PropertyGet;
 import dev.latvian.mods.rhino.ast.TryStatement;
@@ -162,7 +161,7 @@ public final class KubeXCompiler {
                 AstNode helperStatement = statements.get(i);
                 AstNode loopStatement = statements.get(i + 1);
                 LoopHelper helper = extractLoopHelper(helperStatement);
-                if(helper == null || !(loopStatement instanceof ForLoop forLoop) || !isLoopHelperCall(forLoop, helper.name(), source)) {
+                if(helper == null || !(loopStatement instanceof ForLoop forLoop) || !isLoopHelperCall(forLoop, helper.name())) {
                     continue;
                 }
 
@@ -228,9 +227,7 @@ public final class KubeXCompiler {
     private boolean containsNonPackageRequireCall(AstNode node) {
         boolean[] found = { false };
         visitAst(node, current -> {
-            if(found[0]) {
-                return;
-            }
+            if(found[0]) return;
 
             if(current instanceof FunctionCall call && call.getTarget() instanceof Name target && "__require".equals(target.getIdentifier())) {
                 if(call.getArguments().size() != 1) {
@@ -252,8 +249,8 @@ public final class KubeXCompiler {
 
         VariableInitializer initializer = declaration.getVariables().get(0);
         return initializer.getTarget() instanceof Name name
-            && "__require".equals(name.getIdentifier())
-            && initializer.getInitializer() instanceof FunctionNode;
+        && "__require".equals(name.getIdentifier())
+        && initializer.getInitializer() instanceof FunctionNode;
     }
 
     private LoopHelper extractLoopHelper(AstNode statement) {
@@ -283,7 +280,7 @@ public final class KubeXCompiler {
         return new LoopHelper(identifier, functionNode);
     }
 
-    private boolean isLoopHelperCall(ForLoop forLoop, String helperName, String source) {
+    private boolean isLoopHelperCall(ForLoop forLoop, String helperName) {
         if(!(forLoop.getInitializer() instanceof VariableDeclaration declaration) || declaration.getVariables().size() != 1) {
             return false;
         }
@@ -294,9 +291,7 @@ public final class KubeXCompiler {
         }
 
         AstNode body = forLoop.getBody();
-        if(!(body instanceof Node bodyNode)) {
-            return false;
-        }
+        if(!(body instanceof Node bodyNode)) return false;
 
         List<AstNode> statements = childStatements(bodyNode);
         if(statements.size() != 1 || !(statements.get(0) instanceof ExpressionStatement expressionStatement)) {
@@ -310,16 +305,7 @@ public final class KubeXCompiler {
         return call.getTarget() instanceof Name target
         && helperName.equals(target.getIdentifier())
         && call.getArguments().isEmpty()
-        && isSimpleLoopVariableIncrement(forLoop.getCondition(), forLoop.getIncrement(), loopName.getIdentifier(), source);
-    }
-
-    private boolean isSimpleLoopVariableIncrement(AstNode condition, AstNode increment, String loopVariable, String source) {
-        if(!(condition instanceof InfixExpression infix) || !(infix.getLeft() instanceof Name left) || !loopVariable.equals(left.getIdentifier())) {
-            return false;
-        }
-
-        String incrementSource = slice(source, increment).replace(" ", "");
-        return incrementSource.equals(loopVariable + "++") || incrementSource.equals("++" + loopVariable);
+        && loopName.getIdentifier() != null;
     }
 
     private List<Edit> collectPackageMemberAccessEdits(AstRoot root, Map<String, String> packageAliases) {
