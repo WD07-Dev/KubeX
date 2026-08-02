@@ -5,7 +5,7 @@ plugins {
 }
 
 base {
-    archivesName = "${archives_base_name}-neoforge"
+    archivesName = "${archives_base_name}-neoforge-${minecraft_version}"
 }
 
 dependencies {
