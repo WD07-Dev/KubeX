@@ -2,10 +2,14 @@ package com.ourgram.kubex.workspace;
 
 import java.io.IOException;
 import java.io.InputStream;
-import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
+import java.util.stream.Stream;
 
 public final class KubeXWorkspaceInitializer {
     private static final String TS_INCLUDE = "\"./**/*.ts\"";
@@ -16,17 +20,16 @@ public final class KubeXWorkspaceInitializer {
 
         try {
             createDirectories(workspaceRoot);
-            copyIfExists(normalizedGameRoot.resolve(".probe"), workspaceRoot.resolve(".probe"));
-            copyIfExists(normalizedGameRoot.resolve(".vscode"), workspaceRoot.resolve(".vscode"));
-            copyIfExists(
+            syncWorkspaceRoot(normalizedGameRoot, workspaceRoot);
+            syncFileIfExists(
                 normalizedGameRoot.resolve("kubejs").resolve("client_scripts").resolve("jsconfig.json"),
                 workspaceRoot.resolve("src").resolve("client_scripts").resolve("jsconfig.json")
             );
-            copyIfExists(
+            syncFileIfExists(
                 normalizedGameRoot.resolve("kubejs").resolve("server_scripts").resolve("jsconfig.json"),
                 workspaceRoot.resolve("src").resolve("server_scripts").resolve("jsconfig.json")
             );
-            copyIfExists(
+            syncFileIfExists(
                 normalizedGameRoot.resolve("kubejs").resolve("startup_scripts").resolve("jsconfig.json"),
                 workspaceRoot.resolve("src").resolve("startup_scripts").resolve("jsconfig.json")
             );
@@ -49,9 +52,6 @@ public final class KubeXWorkspaceInitializer {
                 mode,
                 templatePath(mode, "startup_main")
             );
-            writeIfMissing(workspaceRoot.resolve("package.json"), "kubex/templates/common/package.json");
-            writeIfMissing(workspaceRoot.resolve("esbuild.config.mjs"), "kubex/templates/common/esbuild.config.mjs");
-
             return new KubeXWorkspaceInitResult(true, workspaceRoot, mode, "Initialized KubeX workspace");
         } catch (IOException exception) {
             return new KubeXWorkspaceInitResult(false, workspaceRoot, mode, exception.getMessage());
@@ -68,14 +68,33 @@ public final class KubeXWorkspaceInitializer {
         Files.createDirectories(workspaceRoot.resolve("src").resolve("startup_scripts"));
     }
 
-    private void copyIfExists(Path source, Path target) throws IOException {
+    private void syncWorkspaceRoot(Path gameRoot, Path workspaceRoot) throws IOException {
+        syncDirectoryIfExists(gameRoot.resolve(".probe"), workspaceRoot.resolve(".probe"));
+        copyPathIfExists(gameRoot.resolve(".vscode"), workspaceRoot.resolve(".vscode"));
+        writeResource(workspaceRoot.resolve("package.json"), "kubex/templates/common/package.json");
+        writeResource(workspaceRoot.resolve("esbuild.config.mjs"), "kubex/templates/common/esbuild.config.mjs");
+    }
+
+    private void syncDirectoryIfExists(Path source, Path target) throws IOException {
+        if(!Files.exists(source)) return;
+
+        if(Files.isDirectory(source)) {
+            syncDirectory(source, target);
+            return;
+        }
+
+        Files.createDirectories(target.getParent());
+        Files.copy(source, target, StandardCopyOption.REPLACE_EXISTING);
+    }
+
+    private void copyPathIfExists(Path source, Path target) throws IOException {
         if(!Files.exists(source)) return;
 
         if(Files.isDirectory(source)) {
             Files.createDirectories(target);
-            try (var stream = Files.list(source)) {
+            try (Stream<Path> stream = Files.list(source)) {
                 for(Path child : stream.toList()) {
-                    copyIfExists(child, target.resolve(child.getFileName()));
+                    copyPathIfExists(child, target.resolve(child.getFileName()));
                 }
             }
             return;
@@ -85,12 +104,70 @@ public final class KubeXWorkspaceInitializer {
         Files.copy(source, target, StandardCopyOption.REPLACE_EXISTING);
     }
 
+    private void syncFileIfExists(Path source, Path target) throws IOException {
+        if(!Files.exists(source) || Files.isDirectory(source)) return;
+
+        Files.createDirectories(target.getParent());
+        Files.copy(source, target, StandardCopyOption.REPLACE_EXISTING);
+    }
+
+    private void syncDirectory(Path sourceRoot, Path targetRoot) throws IOException {
+        Files.createDirectories(targetRoot);
+
+        List<Path> sourcePaths;
+        try (Stream<Path> stream = Files.walk(sourceRoot)) {
+            sourcePaths = stream.toList();
+        }
+
+        for(Path sourcePath : sourcePaths) {
+            Path relativePath = sourceRoot.relativize(sourcePath);
+            Path targetPath = targetRoot.resolve(relativePath.toString());
+
+            if(Files.isDirectory(sourcePath)) {
+                Files.createDirectories(targetPath);
+                continue;
+            }
+
+            Files.createDirectories(targetPath.getParent());
+            Files.copy(sourcePath, targetPath, StandardCopyOption.REPLACE_EXISTING);
+        }
+
+        deleteMissingTargets(sourceRoot, targetRoot);
+    }
+
+    private void deleteMissingTargets(Path sourceRoot, Path targetRoot) throws IOException {
+        if(!Files.exists(targetRoot)) return;
+
+        List<Path> stalePaths = new ArrayList<>();
+        try (Stream<Path> stream = Files.walk(targetRoot)) {
+            for(Path targetPath : (Iterable<Path>) stream::iterator) {
+                if(targetPath.equals(targetRoot)) continue;
+
+                Path relativePath = targetRoot.relativize(targetPath);
+                if(Files.exists(sourceRoot.resolve(relativePath.toString()))) continue;
+                stalePaths.add(targetPath);
+            }
+        }
+
+        stalePaths.sort(Comparator.reverseOrder());
+        for(Path stalePath : stalePaths) {
+            Files.deleteIfExists(stalePath);
+        }
+    }
+
     private void writeIfMissing(Path path, String resourcePath) throws IOException {
         if(Files.exists(path)) return;
 
         Files.createDirectories(path.getParent());
         try (InputStream inputStream = resource(resourcePath)) {
             Files.copy(inputStream, path);
+        }
+    }
+
+    private void writeResource(Path path, String resourcePath) throws IOException {
+        Files.createDirectories(path.getParent());
+        try (InputStream inputStream = resource(resourcePath)) {
+            Files.copy(inputStream, path, StandardCopyOption.REPLACE_EXISTING);
         }
     }
 
