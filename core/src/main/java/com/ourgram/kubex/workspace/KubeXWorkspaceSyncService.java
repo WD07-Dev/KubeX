@@ -6,6 +6,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Stream;
 import com.ourgram.kubex.compiler.CompileOptions;
 import com.ourgram.kubex.compiler.KubeXCompiler;
 
@@ -46,6 +47,21 @@ public final class KubeXWorkspaceSyncService {
                 kubeJsRoot.resolve("startup_scripts").resolve("main.js"),
                 publishedFiles,
                 debugEnabled
+            );
+            syncDirectory(
+                workspaceRoot.resolve("src").resolve("assets"),
+                kubeJsRoot.resolve("assets"),
+                publishedFiles
+            );
+            syncDirectory(
+                workspaceRoot.resolve("src").resolve("config"),
+                kubeJsRoot.resolve("config"),
+                publishedFiles
+            );
+            syncDirectory(
+                workspaceRoot.resolve("src").resolve("data"),
+                kubeJsRoot.resolve("data"),
+                publishedFiles
             );
 
             return new KubeXWorkspaceSyncResult(
@@ -96,6 +112,24 @@ public final class KubeXWorkspaceSyncService {
             return 0;
         } catch (Exception exception) {
             throw new IOException("Failed to sync " + sourceFile.getFileName() + ": " + failureMessage(exception), exception);
+        }
+    }
+
+    private void syncDirectory(Path sourceRoot, Path targetRoot, List<Path> publishedFiles) throws IOException {
+        if(!Files.isDirectory(sourceRoot)) return;
+
+        try (Stream<Path> paths = Files.walk(sourceRoot)) {
+            for(Path sourcePath : (Iterable<Path>) paths::iterator) {
+                if(Files.isDirectory(sourcePath)) continue;
+
+                Path relativePath = sourceRoot.relativize(sourcePath);
+                Path targetPath = targetRoot.resolve(relativePath);
+                Files.createDirectories(targetPath.getParent());
+                Files.copy(sourcePath, targetPath, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                publishedFiles.add(targetPath);
+            }
+        } catch (Exception exception) {
+            throw new IOException("Failed to sync " + sourceRoot.getFileName() + ": " + failureMessage(exception), exception);
         }
     }
 
