@@ -33,6 +33,10 @@ public final class KubeXWorkspaceInitializer {
                 normalizedGameRoot.resolve("kubejs").resolve("startup_scripts").resolve("jsconfig.json"),
                 workspaceRoot.resolve("src").resolve("startup_scripts").resolve("jsconfig.json")
             );
+            syncDirectoryIfExists(
+                normalizedGameRoot.resolve("kubejs").resolve("config"),
+                workspaceRoot.resolve("src").resolve("config")
+            );
             ensureTypeScriptInclude(workspaceRoot.resolve("src").resolve("client_scripts").resolve("jsconfig.json"));
             ensureTypeScriptInclude(workspaceRoot.resolve("src").resolve("server_scripts").resolve("jsconfig.json"));
             ensureTypeScriptInclude(workspaceRoot.resolve("src").resolve("startup_scripts").resolve("jsconfig.json"));

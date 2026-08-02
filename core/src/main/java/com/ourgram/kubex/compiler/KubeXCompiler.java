@@ -166,8 +166,11 @@ public final class KubeXCompiler {
                 }
 
                 String transformedSource = buildLoopReplacementSource(forLoop, helper, source);
-                edits.add(removeNode(helperStatement));
-                edits.add(replaceNode(loopStatement, transformedSource));
+                edits.add(replaceRange(
+                    helperStatement.getAbsolutePosition(),
+                    loopStatement.getAbsolutePosition() + loopStatement.getLength(),
+                    transformedSource
+                ));
                 i++;
             }
         }
@@ -634,6 +637,10 @@ public final class KubeXCompiler {
 
     private Edit replaceNode(AstNode node, String replacement) {
         return new Edit(node.getAbsolutePosition(), node.getAbsolutePosition() + node.getLength(), replacement);
+    }
+
+    private Edit replaceRange(int start, int end, String replacement) {
+        return new Edit(start, end, replacement);
     }
 
     private Edit insertAt(int position, String inserted) {
