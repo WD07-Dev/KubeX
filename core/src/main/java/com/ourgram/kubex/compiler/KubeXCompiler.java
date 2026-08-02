@@ -1,5 +1,7 @@
 package com.ourgram.kubex.compiler;
 
+import com.ourgram.kubex.compiler.helper.CompilerHelper;
+import com.ourgram.kubex.compiler.helper.LoopRewriter;
 import com.ourgram.kubex.sourcemap.KubeXSourceMapService;
 import dev.latvian.mods.rhino.CompilerEnvirons;
 import dev.latvian.mods.rhino.Context;
@@ -10,8 +12,6 @@ import dev.latvian.mods.rhino.RhinoException;
 import dev.latvian.mods.rhino.ast.AstNode;
 import dev.latvian.mods.rhino.ast.AstRoot;
 import dev.latvian.mods.rhino.ast.Block;
-import dev.latvian.mods.rhino.ast.ExpressionStatement;
-import dev.latvian.mods.rhino.ast.ForLoop;
 import dev.latvian.mods.rhino.ast.FunctionCall;
 import dev.latvian.mods.rhino.ast.FunctionNode;
 import dev.latvian.mods.rhino.ast.Name;
@@ -30,15 +30,16 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Consumer;
-import java.util.regex.Pattern;
 
 public final class KubeXCompiler {
     private record PackageAlias(String alias, String packageName) {}
-    private record LoopHelper(String name, FunctionNode functionNode) {}
     private record Edit(int start, int end, String replacement) {}
     private record LineColumn(int line, int column) {}
     private record SourceLocation(String file, int line, int column) {}
 
+    private static final List<CompilerHelper> HELPERS = List.of(
+        new LoopRewriter()
+    );
     private static final String BANNER = loadResource("kubex/compiler/banner.js");
     private static final String DEBUG_HELPER = loadResource("kubex/compiler/debug-helper.js");
     private static final String JAVA_LOAD_CLASS = loadResource("kubex/compiler/java-load-class.js");
@@ -48,12 +49,7 @@ public final class KubeXCompiler {
             + "    __kubexReport(e, { scriptGroup: \"${scriptGroup}\", file: \"${file}\", line: ${line}, column: ${column} });\n"
             + "    throw e;\n"
             + "  }\n";
-    private static final String LOOP_REPLACEMENT =
-        "for (${initializer}; ${condition}; ${increment}) {\n"
-            + "  (function(${loopVariable}) ${helperBody})(${loopVariable});\n"
-            + "}";
     private static final String SOURCE_NAME = "kubex-sync.js";
-    private static final Pattern LOOP_HELPER_NAME_PATTERN = Pattern.compile("_loop\\d*");
     private static final List<String> AST_CHILD_GETTERS = List.of(
         "getExpression",
         "getTarget",
@@ -81,12 +77,12 @@ public final class KubeXCompiler {
         Map<String, String> packageAliases = collectPackageAliases(firstPassRoot);
         List<Edit> firstPassEdits = new ArrayList<>();
         firstPassEdits.addAll(collectPackageAliasRemovalEdits(firstPassRoot));
-        firstPassEdits.addAll(collectLoopHelperEdits(firstPassRoot, source));
         if(!containsNonPackageRequireCall(firstPassRoot)) {
             firstPassEdits.addAll(collectRequireHelperRemovalEdits(firstPassRoot));
         }
 
         String firstPass = applyEdits(source, firstPassEdits);
+        firstPass = applyHelpers(firstPass);
         AstRoot secondPassRoot = parseScript(firstPass);
         String secondPass = applyEdits(firstPass, collectPackageMemberAccessEdits(secondPassRoot, packageAliases));
         secondPass = rewriteRemainingPackageMemberAccesses(secondPass, packageAliases);
@@ -103,6 +99,14 @@ public final class KubeXCompiler {
         transformed = prependBanner(transformed);
         validateRhino(transformed);
         return new CompileResult(fileName, source, transformed);
+    }
+
+    private String applyHelpers(String source) {
+        String current = source;
+        for(CompilerHelper helper : HELPERS) {
+            current = helper.rewrite(parseScript(current), current);
+        }
+        return current;
     }
 
     private AstRoot parseScript(String source) {
@@ -153,35 +157,16 @@ public final class KubeXCompiler {
         return edits;
     }
 
-    private List<Edit> collectLoopHelperEdits(AstRoot root, String source) {
-        List<Edit> edits = new ArrayList<>();
-        for(Node container : collectStatementContainers(root)) {
-            List<AstNode> statements = childStatements(container);
-            for(int i = 0; i + 1 < statements.size(); i++) {
-                AstNode helperStatement = statements.get(i);
-                AstNode loopStatement = statements.get(i + 1);
-                LoopHelper helper = extractLoopHelper(helperStatement);
-                if(helper == null || !(loopStatement instanceof ForLoop forLoop) || !isLoopHelperCall(forLoop, helper.name())) {
-                    continue;
-                }
-
-                String transformedSource = buildLoopReplacementSource(forLoop, helper, source);
-                edits.add(replaceRange(
-                    helperStatement.getAbsolutePosition(),
-                    loopStatement.getAbsolutePosition() + loopStatement.getLength(),
-                    transformedSource
-                ));
-                i++;
-            }
-        }
-        return edits;
-    }
-
     private List<Node> collectStatementContainers(AstRoot root) {
         List<Node> containers = new ArrayList<>();
+        Set<Node> seen = java.util.Collections.newSetFromMap(new IdentityHashMap<>());
         visitAst(root, node -> {
-            if(node instanceof AstRoot || node instanceof Block) {
+            if((node instanceof AstRoot || node instanceof Block) && seen.add(node)) {
                 containers.add(node);
+            }
+
+            if(node instanceof FunctionNode functionNode && functionNode.getBody() instanceof Node bodyNode && seen.add(bodyNode)) {
+                containers.add(bodyNode);
             }
         });
         return containers;
@@ -256,61 +241,6 @@ public final class KubeXCompiler {
         && initializer.getInitializer() instanceof FunctionNode;
     }
 
-    private LoopHelper extractLoopHelper(AstNode statement) {
-        if(!(statement instanceof VariableDeclaration declaration) || declaration.getVariables().size() != 1) {
-            return null;
-        }
-
-        VariableInitializer initializer = declaration.getVariables().get(0);
-        if(!(initializer.getTarget() instanceof Name helperName)) {
-            return null;
-        }
-
-        String identifier = helperName.getIdentifier();
-        if(!LOOP_HELPER_NAME_PATTERN.matcher(identifier).matches()) {
-            return null;
-        }
-
-        if(!(initializer.getInitializer() instanceof FunctionNode functionNode)) {
-            return null;
-        }
-
-        Name functionName = functionNode.getFunctionName();
-        if((functionName != null && !identifier.equals(functionName.getIdentifier())) || !functionNode.getParams().isEmpty()) {
-            return null;
-        }
-
-        return new LoopHelper(identifier, functionNode);
-    }
-
-    private boolean isLoopHelperCall(ForLoop forLoop, String helperName) {
-        if(!(forLoop.getInitializer() instanceof VariableDeclaration declaration) || declaration.getVariables().size() != 1) {
-            return false;
-        }
-
-        VariableInitializer initializer = declaration.getVariables().get(0);
-        if(!(initializer.getTarget() instanceof Name loopName)) {
-            return false;
-        }
-
-        AstNode body = forLoop.getBody();
-        if(!(body instanceof Node bodyNode)) return false;
-
-        List<AstNode> statements = childStatements(bodyNode);
-        if(statements.size() != 1 || !(statements.get(0) instanceof ExpressionStatement expressionStatement)) {
-            return false;
-        }
-
-        if(!(expressionStatement.getExpression() instanceof FunctionCall call)) {
-            return false;
-        }
-
-        return call.getTarget() instanceof Name target
-        && helperName.equals(target.getIdentifier())
-        && call.getArguments().isEmpty()
-        && loopName.getIdentifier() != null;
-    }
-
     private List<Edit> collectPackageMemberAccessEdits(AstRoot root, Map<String, String> packageAliases) {
         List<Edit> edits = new ArrayList<>();
         visitAst(root, node -> {
@@ -363,17 +293,6 @@ public final class KubeXCompiler {
             ));
         });
         return edits;
-    }
-
-    private String buildLoopReplacementSource(ForLoop forLoop, LoopHelper helper, String source) {
-        String loopVariable = ((Name) ((VariableDeclaration) forLoop.getInitializer()).getVariables().get(0).getTarget()).getIdentifier();
-        return renderTemplate(LOOP_REPLACEMENT, Map.of(
-            "initializer", slice(source, forLoop.getInitializer()),
-            "condition", slice(source, forLoop.getCondition()),
-            "increment", slice(source, forLoop.getIncrement()),
-            "loopVariable", loopVariable,
-            "helperBody", slice(source, helper.functionNode().getBody())
-        ));
     }
 
     private boolean isCallbackFunction(FunctionNode functionNode) {
@@ -637,10 +556,6 @@ public final class KubeXCompiler {
 
     private Edit replaceNode(AstNode node, String replacement) {
         return new Edit(node.getAbsolutePosition(), node.getAbsolutePosition() + node.getLength(), replacement);
-    }
-
-    private Edit replaceRange(int start, int end, String replacement) {
-        return new Edit(start, end, replacement);
     }
 
     private Edit insertAt(int position, String inserted) {
