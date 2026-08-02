@@ -71,3 +71,7 @@ jar {
         ])
     }
 }
+
+tasks.named("sourcesJar", Jar) {
+    from(project(":core").sourceSets.main.allSource)
+}
