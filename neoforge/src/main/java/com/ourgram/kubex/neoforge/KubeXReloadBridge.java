@@ -7,7 +7,15 @@ import net.minecraft.commands.CommandSourceStack;
 
 public final class KubeXReloadBridge {
     public KubeXWorkspaceReloadService fromSource(CommandSourceStack source) {
-        return () -> reload(source);
+        if(hasServer(source)) {
+            return () -> reload(source);
+        }
+
+        if(isIntegratedClient()) {
+            return this::sendClientReloadCommand;
+        }
+
+        return null;
     }
 
     public boolean reload() {
@@ -23,7 +31,11 @@ public final class KubeXReloadBridge {
         } catch (Exception ignored) {
         }
 
-        return sendClientReloadCommand();
+        if(isIntegratedClient()) {
+            return sendClientReloadCommand();
+        }
+
+        return false;
     }
 
     public boolean reload(CommandSourceStack source) {
@@ -31,7 +43,19 @@ public final class KubeXReloadBridge {
             source.getServer().getCommands().performPrefixedCommand(source, "reload");
             return true;
         } catch (RuntimeException ignored) {
-            return sendClientReloadCommand();
+            if(isIntegratedClient()) {
+                return sendClientReloadCommand();
+            }
+
+            return false;
+        }
+    }
+
+    private boolean hasServer(CommandSourceStack source) {
+        try {
+            return source.getServer() != null;
+        } catch (RuntimeException ignored) {
+            return false;
         }
     }
 
@@ -49,6 +73,43 @@ public final class KubeXReloadBridge {
             Method sendCommand = connection.getClass().getMethod("sendCommand", String.class);
             sendCommand.invoke(connection, "reload");
             return true;
+        } catch (Exception ignored) {
+            return false;
+        }
+    }
+
+    private boolean isIntegratedClient() {
+        try {
+            Class<?> minecraftClass = Class.forName("net.minecraft.client.Minecraft");
+            Method getInstance = minecraftClass.getMethod("getInstance");
+            Object minecraft = getInstance.invoke(null);
+            if(minecraft == null) return false;
+
+            try {
+                Method hasSingleplayerServer = minecraftClass.getMethod("hasSingleplayerServer");
+                Object result = hasSingleplayerServer.invoke(minecraft);
+                if(result instanceof Boolean booleanResult) {
+                    return booleanResult;
+                }
+            } catch (NoSuchMethodException ignored) {
+            }
+
+            try {
+                Method getSingleplayerServer = minecraftClass.getMethod("getSingleplayerServer");
+                return getSingleplayerServer.invoke(minecraft) != null;
+            } catch (NoSuchMethodException ignored) {
+            }
+
+            try {
+                Method isLocalServer = minecraftClass.getMethod("isLocalServer");
+                Object result = isLocalServer.invoke(minecraft);
+                if(result instanceof Boolean booleanResult) {
+                    return booleanResult;
+                }
+            } catch (NoSuchMethodException ignored) {
+            }
+
+            return false;
         } catch (Exception ignored) {
             return false;
         }

@@ -67,8 +67,8 @@ public final class KubeXWorkspacePipelineService {
         }
 
         String message = syncResult.publishedFiles().isEmpty()
-            ? buildResult.message() + " | " + syncResult.message()
-            : buildResult.message() + " | " + syncResult.message() + (reloadAttempted ? " | Reload completed" : "");
+        ? buildResult.message() + " | " + syncResult.message()
+        : buildResult.message() + " | " + syncResult.message() + (reloadAttempted ? " | Reload completed" : "");
 
         return new KubeXWorkspacePipelineResult(
             true,
