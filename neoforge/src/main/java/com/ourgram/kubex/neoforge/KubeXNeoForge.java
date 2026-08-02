@@ -3,6 +3,7 @@ package com.ourgram.kubex.neoforge;
 import com.ourgram.kubex.KubeXDebugManager;
 import com.ourgram.kubex.KubeXDoctorManager;
 import com.ourgram.kubex.KubeXWorkspaceManager;
+import com.ourgram.kubex.command.KubeXCommandService;
 import com.ourgram.kubex.workspace.KubeXDebugModeService;
 import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.common.Mod;
@@ -26,11 +27,11 @@ public final class KubeXNeoForge {
         MOD_CONTAINER = modContainer;
         KubeXDebugModeService debugModeService = new KubeXDebugModeService();
         this.workspaceManager = new KubeXWorkspaceManager(debugModeService);
-        this.commands = new KubeXCommands(
+        this.commands = new KubeXCommands(new KubeXCommandService(
             workspaceManager,
             new KubeXDebugManager(debugModeService),
             new KubeXDoctorManager()
-        );
+        ));
         NeoForge.EVENT_BUS.addListener(this::registerCommands);
         NeoForge.EVENT_BUS.addListener(this::registerClientCommands);
         NeoForge.EVENT_BUS.addListener(this::onServerStarted);
