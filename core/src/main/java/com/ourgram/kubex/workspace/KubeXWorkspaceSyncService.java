@@ -5,6 +5,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.stream.Stream;
 import com.ourgram.kubex.compiler.CompileOptions;
@@ -118,18 +119,51 @@ public final class KubeXWorkspaceSyncService {
     private void syncDirectory(Path sourceRoot, Path targetRoot, List<Path> publishedFiles) throws IOException {
         if(!Files.isDirectory(sourceRoot)) return;
 
-        try (Stream<Path> paths = Files.walk(sourceRoot)) {
-            for(Path sourcePath : (Iterable<Path>) paths::iterator) {
-                if(Files.isDirectory(sourcePath)) continue;
+        try {
+            Files.createDirectories(targetRoot);
 
+            List<Path> sourcePaths;
+            try (Stream<Path> stream = Files.walk(sourceRoot)) {
+                sourcePaths = stream.toList();
+            }
+
+            for(Path sourcePath : sourcePaths) {
                 Path relativePath = sourceRoot.relativize(sourcePath);
-                Path targetPath = targetRoot.resolve(relativePath);
+                Path targetPath = targetRoot.resolve(relativePath.toString());
+
+                if(Files.isDirectory(sourcePath)) {
+                    Files.createDirectories(targetPath);
+                    continue;
+                }
+
                 Files.createDirectories(targetPath.getParent());
                 Files.copy(sourcePath, targetPath, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
                 publishedFiles.add(targetPath);
             }
+
+            deleteMissingTargets(sourceRoot, targetRoot);
         } catch (Exception exception) {
             throw new IOException("Failed to sync " + sourceRoot.getFileName() + ": " + failureMessage(exception), exception);
+        }
+    }
+
+    private void deleteMissingTargets(Path sourceRoot, Path targetRoot) throws IOException {
+        if(!Files.exists(targetRoot)) return;
+
+        List<Path> stalePaths = new ArrayList<>();
+        try (Stream<Path> stream = Files.walk(targetRoot)) {
+            for(Path targetPath : (Iterable<Path>) stream::iterator) {
+                if(targetPath.equals(targetRoot)) continue;
+
+                Path relativePath = targetRoot.relativize(targetPath);
+                if(Files.exists(sourceRoot.resolve(relativePath.toString()))) continue;
+                stalePaths.add(targetPath);
+            }
+        }
+
+        stalePaths.sort(Comparator.reverseOrder());
+        for(Path stalePath : stalePaths) {
+            Files.deleteIfExists(stalePath);
         }
     }
 
