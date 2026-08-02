@@ -34,16 +34,19 @@ public final class KubeXWorkspaceInitializer {
             ensureTypeScriptInclude(workspaceRoot.resolve("src").resolve("server_scripts").resolve("jsconfig.json"));
             ensureTypeScriptInclude(workspaceRoot.resolve("src").resolve("startup_scripts").resolve("jsconfig.json"));
 
-            writeIfMissing(
-                workspaceRoot.resolve("src").resolve("client_scripts").resolve(mode.entryFileName()),
+            writeEntryIfMissing(
+                workspaceRoot.resolve("src").resolve("client_scripts"),
+                mode,
                 templatePath(mode, "client_main")
             );
-            writeIfMissing(
-                workspaceRoot.resolve("src").resolve("server_scripts").resolve(mode.entryFileName()),
+            writeEntryIfMissing(
+                workspaceRoot.resolve("src").resolve("server_scripts"),
+                mode,
                 templatePath(mode, "server_main")
             );
-            writeIfMissing(
-                workspaceRoot.resolve("src").resolve("startup_scripts").resolve(mode.entryFileName()),
+            writeEntryIfMissing(
+                workspaceRoot.resolve("src").resolve("startup_scripts"),
+                mode,
                 templatePath(mode, "startup_main")
             );
             writeIfMissing(workspaceRoot.resolve("package.json"), "kubex/templates/common/package.json");
@@ -89,6 +92,11 @@ public final class KubeXWorkspaceInitializer {
         try (InputStream inputStream = resource(resourcePath)) {
             Files.copy(inputStream, path);
         }
+    }
+
+    private void writeEntryIfMissing(Path scriptsRoot, KubeXInitMode mode, String resourcePath) throws IOException {
+        if(Files.exists(scriptsRoot.resolve("main.js")) || Files.exists(scriptsRoot.resolve("main.ts"))) return;
+        writeIfMissing(scriptsRoot.resolve(mode.entryFileName()), resourcePath);
     }
 
     private void ensureTypeScriptInclude(Path jsconfigPath) throws IOException {
