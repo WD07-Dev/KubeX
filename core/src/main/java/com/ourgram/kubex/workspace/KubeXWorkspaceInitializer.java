@@ -2,13 +2,19 @@ package com.ourgram.kubex.workspace;
 
 import java.io.IOException;
 import java.io.InputStream;
-import java.nio.file.Path;
 import java.nio.file.Files;
+import java.nio.file.FileSystem;
+import java.nio.file.FileSystems;
+import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.nio.charset.StandardCharsets;
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Stream;
 
 public final class KubeXWorkspaceInitializer {
@@ -75,8 +81,7 @@ public final class KubeXWorkspaceInitializer {
     private void syncWorkspaceRoot(Path gameRoot, Path workspaceRoot) throws IOException {
         syncDirectoryIfExists(gameRoot.resolve(".probe"), workspaceRoot.resolve(".probe"));
         copyPathIfExists(gameRoot.resolve(".vscode"), workspaceRoot.resolve(".vscode"));
-        writeResource(workspaceRoot.resolve("package.json"), "kubex/templates/common/package.json");
-        writeResource(workspaceRoot.resolve("esbuild.config.mjs"), "kubex/templates/common/esbuild.config.mjs");
+        copyResourceDirectory("kubex/templates/common", workspaceRoot);
     }
 
     private void syncDirectoryIfExists(Path source, Path target) throws IOException {
@@ -168,10 +173,30 @@ public final class KubeXWorkspaceInitializer {
         }
     }
 
-    private void writeResource(Path path, String resourcePath) throws IOException {
-        Files.createDirectories(path.getParent());
-        try (InputStream inputStream = resource(resourcePath)) {
-            Files.copy(inputStream, path, StandardCopyOption.REPLACE_EXISTING);
+    private void copyResourceDirectory(String resourceDirectory, Path targetRoot) throws IOException {
+        URI uri = resourceUri(resourceDirectory);
+        if("jar".equals(uri.getScheme())) {
+            Map<String, String> environment = new HashMap<>();
+            environment.put("create", "false");
+            try (FileSystem fileSystem = FileSystems.newFileSystem(uri, environment)) {
+                copyResourceTree(fileSystem.getPath(resourceDirectory), targetRoot);
+            }
+            return;
+        }
+
+        copyResourceTree(Path.of(uri), targetRoot);
+    }
+
+    private void copyResourceTree(Path sourceRoot, Path targetRoot) throws IOException {
+        try (Stream<Path> stream = Files.walk(sourceRoot)) {
+            for(Path sourcePath : stream.toList()) {
+                if(Files.isDirectory(sourcePath)) continue;
+                Path relativePath = sourceRoot.relativize(sourcePath);
+                Path targetPath = targetRoot.resolve(relativePath.toString());
+                if(Files.exists(targetPath)) continue;
+                Files.createDirectories(targetPath.getParent());
+                Files.copy(sourcePath, targetPath);
+            }
         }
     }
 
@@ -202,6 +227,18 @@ public final class KubeXWorkspaceInitializer {
             throw new IOException("Missing template resource: " + path);
         }
         return inputStream;
+    }
+
+    private URI resourceUri(String path) throws IOException {
+        try {
+            var resource = getClass().getClassLoader().getResource(path);
+            if(resource == null) {
+                throw new IOException("Missing template resource: " + path);
+            }
+            return resource.toURI();
+        } catch (URISyntaxException exception) {
+            throw new IOException("Invalid template resource URI: " + path, exception);
+        }
     }
 
     private String templatePath(KubeXInitMode mode, String baseName) {
