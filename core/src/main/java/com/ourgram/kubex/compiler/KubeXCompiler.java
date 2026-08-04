@@ -98,7 +98,7 @@ public final class KubeXCompiler {
 
         transformed = prependBanner(transformed);
         validateRhino(transformed);
-        return new CompileResult(fileName, source, transformed);
+        return new CompileResult(fileName, source, transformed, buildGeneratedToOriginalLineMap(source, transformed));
     }
 
     private String applyHelpers(String source) {
@@ -622,6 +622,77 @@ public final class KubeXCompiler {
             return source;
         }
         return DEBUG_HELPER + System.lineSeparator() + source;
+    }
+
+    private int[] buildGeneratedToOriginalLineMap(String originalSource, String generatedSource) {
+        List<String> originalLines = splitLines(originalSource);
+        List<String> generatedLines = splitLines(generatedSource);
+        int[] lineMap = new int[Math.max(1, generatedLines.size())];
+
+        int originalIndex = 0;
+        int generatedIndex = 0;
+        int lastMappedOriginal = 1;
+        int lookAhead = 24;
+
+        while(generatedIndex < generatedLines.size()) {
+            if(originalIndex < originalLines.size() && sameLine(originalLines.get(originalIndex), generatedLines.get(generatedIndex))) {
+                lastMappedOriginal = originalIndex + 1;
+                lineMap[generatedIndex] = lastMappedOriginal;
+                originalIndex++;
+                generatedIndex++;
+                continue;
+            }
+
+            int originalMatch = findMatchingLine(originalLines, originalIndex, generatedLines.get(generatedIndex), lookAhead);
+            if(originalMatch >= 0) {
+                originalIndex = originalMatch;
+                continue;
+            }
+
+            if(originalIndex < originalLines.size()) {
+                int generatedMatch = findMatchingLine(generatedLines, generatedIndex, originalLines.get(originalIndex), lookAhead);
+                if(generatedMatch >= 0) {
+                    int anchorLine = Math.max(1, Math.min(originalLines.size(), originalIndex + 1));
+                    while(generatedIndex < generatedMatch) {
+                        lineMap[generatedIndex] = anchorLine;
+                        generatedIndex++;
+                    }
+                    continue;
+                }
+            }
+
+            if(originalIndex < originalLines.size()) {
+                lineMap[generatedIndex] = Math.max(1, originalIndex + 1);
+            } else {
+                lineMap[generatedIndex] = lastMappedOriginal;
+            }
+            generatedIndex++;
+        }
+
+        return lineMap;
+    }
+
+    private int findMatchingLine(List<String> lines, int startIndex, String target, int lookAhead) {
+        int maxIndex = Math.min(lines.size(), startIndex + lookAhead + 1);
+        for(int index = startIndex + 1; index < maxIndex; index++) {
+            if(sameLine(lines.get(index), target)) {
+                return index;
+            }
+        }
+        return -1;
+    }
+
+    private boolean sameLine(String left, String right) {
+        return canonicalizeLine(left).equals(canonicalizeLine(right));
+    }
+
+    private String canonicalizeLine(String line) {
+        return line == null ? "" : line.trim();
+    }
+
+    private List<String> splitLines(String source) {
+        String normalized = source.replace("\r\n", "\n").replace('\r', '\n');
+        return List.of(normalized.split("\n", -1));
     }
 
     private static String loadResource(String path) {

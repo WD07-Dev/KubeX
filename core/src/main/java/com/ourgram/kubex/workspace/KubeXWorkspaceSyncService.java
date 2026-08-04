@@ -13,6 +13,7 @@ import com.ourgram.kubex.compiler.KubeXCompiler;
 
 public final class KubeXWorkspaceSyncService {
     private static final String SOURCE_MAP_COMMENT = "//# sourceMappingURL=";
+    private static final String KUBEX_LINE_MAP_SUFFIX = ".kubex-lines";
     private final KubeXCompiler compiler;
     private final KubeXDebugModeService debugModeService;
 
@@ -90,11 +91,12 @@ public final class KubeXWorkspaceSyncService {
             boolean hasSourceMap = Files.exists(sourceMapFile);
             String sourceMapContent = hasSourceMap ? Files.readString(sourceMapFile, StandardCharsets.UTF_8) : null;
 
-            String transformed = compiler.compile(
+            var compileResult = compiler.compile(
                 sourceFile.getFileName().toString(),
                 source,
                 new CompileOptions(debugEnabled, sourceMapContent)
-            ).outputSource();
+            );
+            String transformed = compileResult.outputSource();
 
             if(hasSourceMap) {
                 transformed = rewriteSourceMapComment(transformed, targetFile.getFileName() + ".map");
@@ -103,6 +105,7 @@ public final class KubeXWorkspaceSyncService {
             Files.createDirectories(targetFile.getParent());
             Files.writeString(targetFile, transformed, StandardCharsets.UTF_8);
             publishedFiles.add(targetFile);
+            writeLineMapFile(targetFile, compileResult.generatedToOriginalLineMap());
 
             if(hasSourceMap) {
                 Path targetSourceMapFile = targetFile.resolveSibling(targetFile.getFileName() + ".map");
@@ -180,6 +183,16 @@ public final class KubeXWorkspaceSyncService {
         }
 
         return source.substring(0, commentIndex) + rewrittenComment + source.substring(lineEnd);
+    }
+
+    private void writeLineMapFile(Path targetFile, int[] lineMap) throws IOException {
+        Path lineMapFile = targetFile.resolveSibling(targetFile.getFileName() + KUBEX_LINE_MAP_SUFFIX);
+        StringBuilder builder = new StringBuilder();
+        for(int index = 0; index < lineMap.length; index++) {
+            if(index > 0) builder.append('\n');
+            builder.append(lineMap[index]);
+        }
+        Files.writeString(lineMapFile, builder.toString(), StandardCharsets.UTF_8);
     }
 
     private String failureMessage(Exception exception) {

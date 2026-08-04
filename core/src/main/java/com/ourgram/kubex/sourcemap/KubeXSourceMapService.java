@@ -6,6 +6,7 @@ import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -13,20 +14,24 @@ import java.util.Map;
 
 public final class KubeXSourceMapService {
     private record SourceMapEntry(int sourceIndex, int sourceLine, int sourceColumn) {}
+    private record GeneratedPosition(int line, int column) {}
     private static final List<String> SCRIPT_GROUPS = List.of("client_scripts", "server_scripts", "startup_scripts");
+    private static final String KUBEX_LINE_MAP_SUFFIX = ".kubex-lines";
 
     public record ResolvedSourcePosition(String sourcePath, int sourceLine, int sourceColumn) {}
 
     public KubeXSourceMapLookupResult lookup(Path gameRoot, String scriptGroup, int generatedLine, int generatedColumn) {
         Path normalizedGameRoot = gameRoot.toAbsolutePath().normalize();
+        Path generatedScriptPath = normalizedGameRoot.resolve("kubejs").resolve(scriptGroup).resolve("main.js");
         Path sourceMapPath = normalizedGameRoot.resolve("kubejs").resolve(scriptGroup).resolve("main.js.map");
         if(!Files.exists(sourceMapPath)) {
             return failure(scriptGroup, sourceMapPath, "Source map file was not found");
         }
 
         try {
+            GeneratedPosition adjustedPosition = adjustGeneratedPosition(generatedScriptPath, generatedLine, generatedColumn);
             SourceMapDocument document = SourceMapDocument.parse(sourceMapPath);
-            SourceMapEntry entry = document.lookup(generatedLine, generatedColumn);
+            SourceMapEntry entry = document.lookupClosest(adjustedPosition.line(), adjustedPosition.column());
             if(entry == null) {
                 return failure(scriptGroup, sourceMapPath, "No source mapping was found for " + generatedLine + ":" + generatedColumn);
             }
@@ -70,11 +75,43 @@ public final class KubeXSourceMapService {
 
     public static ResolvedSourcePosition lookupSource(String sourceMapContent, int generatedLine, int generatedColumn) throws IOException {
         SourceMapDocument document = SourceMapDocument.parse(sourceMapContent);
-        SourceMapEntry entry = document.lookup(generatedLine, generatedColumn);
+        SourceMapEntry entry = document.lookupClosest(generatedLine, generatedColumn);
         if(entry == null) {
             return null;
         }
         return new ResolvedSourcePosition(document.sources().get(entry.sourceIndex()), entry.sourceLine(), entry.sourceColumn());
+    }
+
+    private GeneratedPosition adjustGeneratedPosition(Path generatedScriptPath, int generatedLine, int generatedColumn) {
+        if(generatedLine < 1) {
+            return new GeneratedPosition(generatedLine, generatedColumn);
+        }
+
+        Path lineMapPath = generatedScriptPath.resolveSibling(generatedScriptPath.getFileName() + KUBEX_LINE_MAP_SUFFIX);
+        List<Integer> lineMap = readLineMap(lineMapPath);
+        if(lineMap.isEmpty() || generatedLine > lineMap.size()) {
+            return new GeneratedPosition(generatedLine, generatedColumn);
+        }
+
+        return new GeneratedPosition(Math.max(1, lineMap.get(generatedLine - 1)), generatedColumn);
+    }
+
+    private List<Integer> readLineMap(Path lineMapPath) {
+        if(!Files.exists(lineMapPath)) {
+            return Collections.emptyList();
+        }
+
+        try {
+            List<String> lines = Files.readAllLines(lineMapPath, StandardCharsets.UTF_8);
+            List<Integer> lineMap = new ArrayList<>(lines.size());
+            for(String line : lines) {
+                if(line == null || line.isBlank()) continue;
+                lineMap.add(Integer.parseInt(line.trim()));
+            }
+            return lineMap;
+        } catch (Exception ignored) {
+            return Collections.emptyList();
+        }
     }
 
     private List<String> orderedGroups(String positionHint) {
@@ -249,6 +286,17 @@ public final class KubeXSourceMapService {
                     return bestEntry;
                 }
                 generatedLineState++;
+            }
+            return null;
+        }
+
+        SourceMapEntry lookupClosest(int generatedLine, int generatedColumn) throws IOException {
+            for(int line = generatedLine; line >= 1; line--) {
+                int column = line == generatedLine ? generatedColumn : Integer.MAX_VALUE;
+                SourceMapEntry entry = lookup(line, column);
+                if(entry != null) {
+                    return entry;
+                }
             }
             return null;
         }

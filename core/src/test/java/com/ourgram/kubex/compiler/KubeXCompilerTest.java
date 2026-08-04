@@ -9,11 +9,13 @@ import dev.latvian.mods.rhino.ast.AstRoot;
 import dev.latvian.mods.rhino.ast.FunctionNode;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -232,6 +234,36 @@ class KubeXCompilerTest {
 
         assertFalse(output.contains("var __kubexReport"));
         assertFalse(output.contains("throw e;"));
+    }
+
+    @Test
+    void tracksGeneratedLinesBackToOriginalOutputLines() {
+        String source = """
+            (function () {
+              gui.button(1, 1, item, function (click) {
+                player.tell("ok");
+              });
+            })();
+        """;
+        CompileResult result = compiler.compile("server_scripts.js", source, new CompileOptions(true, null));
+        List<String> originalLines = Arrays.asList(source.replace("\r\n", "\n").split("\n", -1));
+        List<String> generatedLines = Arrays.asList(result.outputSource().replace("\r\n", "\n").split("\n", -1));
+        int generatedLine = findLineContaining(generatedLines, "player.tell(\"ok\");");
+        int originalLine = result.generatedToOriginalLineMap()[generatedLine - 1];
+
+        assertTrue(generatedLine > 0);
+        assertTrue(originalLine > 0);
+        assertTrue(originalLine <= originalLines.size());
+        assertTrue(originalLines.get(originalLine - 1).contains("player.tell(\"ok\");"));
+    }
+
+    private int findLineContaining(List<String> lines, String needle) {
+        for(int index = 0; index < lines.size(); index++) {
+            if(lines.get(index).contains(needle)) {
+                return index + 1;
+            }
+        }
+        return -1;
     }
 
     private String diagnostics(String source, String output) {
