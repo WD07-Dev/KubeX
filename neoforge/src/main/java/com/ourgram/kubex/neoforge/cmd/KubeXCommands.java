@@ -1,4 +1,4 @@
-package com.ourgram.kubex.neoforge;
+package com.ourgram.kubex.neoforge.cmd;
 
 import java.nio.file.Path;
 import java.util.concurrent.ExecutorService;

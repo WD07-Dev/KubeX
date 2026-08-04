@@ -4,9 +4,13 @@ import com.ourgram.kubex.KubeXDebugManager;
 import com.ourgram.kubex.KubeXDoctorManager;
 import com.ourgram.kubex.KubeXWorkspaceManager;
 import com.ourgram.kubex.command.KubeXCommandService;
+import com.ourgram.kubex.neoforge.cmd.KubeXCommands;
+import com.ourgram.kubex.neoforge.cmd.KubeXReloadBridge;
+import com.ourgram.kubex.neoforge.config.KubeXNeoForgeConfig;
 import com.ourgram.kubex.workspace.KubeXDebugModeService;
 import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.common.Mod;
+import net.neoforged.fml.config.ModConfig;
 import net.neoforged.neoforge.client.event.RegisterClientCommandsEvent;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.RegisterCommandsEvent;
@@ -22,11 +26,14 @@ public final class KubeXNeoForge {
 
     private final KubeXWorkspaceManager workspaceManager;
     private final KubeXCommands commands;
+    private final KubeXReloadBridge reloadBridge;
 
     public KubeXNeoForge(ModContainer modContainer) {
         MOD_CONTAINER = modContainer;
+        modContainer.registerConfig(ModConfig.Type.COMMON, KubeXNeoForgeConfig.SPEC);
         KubeXDebugModeService debugModeService = new KubeXDebugModeService();
         this.workspaceManager = new KubeXWorkspaceManager(debugModeService);
+        this.reloadBridge = new KubeXReloadBridge();
         this.commands = new KubeXCommands(new KubeXCommandService(
             workspaceManager,
             new KubeXDebugManager(debugModeService),
@@ -47,19 +54,22 @@ public final class KubeXNeoForge {
     }
 
     private void onServerStarted(ServerStartedEvent event) {
+        if(!KubeXNeoForgeConfig.rebuildOnGameStart()) return;
+
         try {
-            var result = workspaceManager.sync(event.getServer().getServerDirectory());
+            var result = workspaceManager.buildAndSync(
+                event.getServer().getServerDirectory(),
+                ignored -> {},
+                reloadBridge::reload
+            );
             if(result.success()) {
-                LOGGER.info("Auto synced KubeX workspace: {}", result.message());
-                for(var publishedFile : result.publishedFiles()) {
-                    LOGGER.info("Published {}", publishedFile);
-                }
+                LOGGER.info("Startup rebuild completed: {}", result.message());
                 return;
             }
 
-            LOGGER.warn("Auto sync failed: {}", result.message());
+            LOGGER.warn("Startup rebuild failed: {}", result.message());
         } catch (Exception exception) {
-            LOGGER.error("Auto sync failed", exception);
+            LOGGER.error("Startup rebuild failed", exception);
         }
     }
 }

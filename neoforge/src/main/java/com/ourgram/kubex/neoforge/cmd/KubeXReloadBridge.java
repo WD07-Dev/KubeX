@@ -1,4 +1,4 @@
-package com.ourgram.kubex.neoforge;
+package com.ourgram.kubex.neoforge.cmd;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
