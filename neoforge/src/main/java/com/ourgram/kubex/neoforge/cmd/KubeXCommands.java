@@ -1,8 +1,5 @@
 package com.ourgram.kubex.neoforge.cmd;
 
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -12,6 +9,7 @@ import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.ourgram.kubex.command.KubeXCommandService;
+import com.ourgram.kubex.command.KubeXCommandStatus;
 import com.ourgram.kubex.workspace.KubeXInitMode;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
@@ -19,7 +17,6 @@ import net.minecraft.network.chat.Component;
 import net.neoforged.fml.loading.FMLPaths;
 
 public final class KubeXCommands {
-    private static final String BUILD_STATUS_FILE = ".kubex-build-status.json";
     private static final ExecutorService BACKGROUND_EXECUTOR = Executors.newSingleThreadExecutor(runnable -> {
         Thread thread = new Thread(runnable, "kubex-worker");
         thread.setDaemon(true);
@@ -28,6 +25,7 @@ public final class KubeXCommands {
 
     private final KubeXCommandService commandService;
     private final KubeXReloadBridge reloadBridge;
+    private KubeXCommandStatus status = new KubeXCommandStatus();
 
     public KubeXCommands(KubeXCommandService commandService) {
         this.commandService = commandService;
@@ -117,39 +115,26 @@ public final class KubeXCommands {
         source.sendSuccess(() -> Component.literal("[KubeX] Running workspace build..."), false);
 
         BACKGROUND_EXECUTOR.execute(() -> {
-            long startedAt = System.currentTimeMillis();
-            writeBuildStatus(gameRoot, "running", "KubeX workspace build is running.", startedAt);
+            status.start(gameRoot, "KubeX workspace build is running.");
             var result = commandService.build(
                 gameRoot,
                 message -> {
-                    writeBuildStatus(gameRoot, "running", message, startedAt);
+                    status.progress(message);
                     source.sendSuccess(() -> Component.literal("[KubeX] " + message), false);
                 },
                 reloadBridge.fromSource(source)
             );
             if(!result.success()) {
-                writeBuildStatus(gameRoot, "failed", result.message(), startedAt);
+                status.fail(result.message());
                 source.sendFailure(Component.literal("[KubeX] Build failed: " + result.message()));
                 return;
             }
 
-            writeBuildStatus(gameRoot, "complete", result.message(), startedAt);
+            status.complete(result.message());
             source.sendSuccess(() -> Component.literal("[KubeX] " + result.message()), false);
         });
 
         return 1;
-    }
-
-    private static void writeBuildStatus(Path gameRoot, String state, String message, long startedAt) {
-        Path status = gameRoot.resolve("kubex").resolve(BUILD_STATUS_FILE);
-        String escaped = message.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n").replace("\r", "");
-        String payload = "{\"state\":\"" + state + "\",\"message\":\"" + escaped
-        + "\",\"startedAt\":" + startedAt + ",\"updatedAt\":" + System.currentTimeMillis() + "}";
-        try {
-            Files.writeString(status, payload, StandardCharsets.UTF_8);
-        } catch(IOException ignored) {
-            // A command build must still run when the optional status file cannot be written.
-        }
     }
 
     private int sync(CommandSourceStack source) {
