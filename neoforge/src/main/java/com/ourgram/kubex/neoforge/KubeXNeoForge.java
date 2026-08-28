@@ -1,13 +1,13 @@
 package com.ourgram.kubex.neoforge;
 
-import com.ourgram.kubex.KubeXDebugManager;
-import com.ourgram.kubex.KubeXDoctorManager;
-import com.ourgram.kubex.KubeXWorkspaceManager;
+import com.ourgram.kubex.KubeXCore;
 import com.ourgram.kubex.command.KubeXCommandService;
 import com.ourgram.kubex.neoforge.cmd.KubeXCommands;
 import com.ourgram.kubex.neoforge.cmd.KubeXReloadBridge;
 import com.ourgram.kubex.neoforge.config.KubeXNeoForgeConfig;
+import com.ourgram.kubex.sourcemap.KubeXSourceMapService;
 import com.ourgram.kubex.workspace.KubeXDebugModeService;
+import com.ourgram.kubex.workspace.KubeXWorkspace;
 import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.common.Mod;
 import net.neoforged.fml.config.ModConfig;
@@ -18,13 +18,12 @@ import net.neoforged.neoforge.event.server.ServerStartedEvent;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-@Mod(KubeXNeoForge.MOD_ID)
+@Mod(KubeXCore.MOD_ID)
 public final class KubeXNeoForge {
-    public static final String MOD_ID = "kubex";
-    public static final Logger LOGGER = LogManager.getLogger(MOD_ID);
+    public static final Logger LOGGER = LogManager.getLogger(KubeXCore.MOD_ID);
     public static ModContainer MOD_CONTAINER;
 
-    private final KubeXWorkspaceManager workspaceManager;
+    private final KubeXWorkspace workspace;
     private final KubeXCommands commands;
     private final KubeXReloadBridge reloadBridge;
 
@@ -32,12 +31,12 @@ public final class KubeXNeoForge {
         MOD_CONTAINER = modContainer;
         modContainer.registerConfig(ModConfig.Type.COMMON, KubeXNeoForgeConfig.SPEC);
         KubeXDebugModeService debugModeService = new KubeXDebugModeService();
-        this.workspaceManager = new KubeXWorkspaceManager(debugModeService);
+        this.workspace = new KubeXWorkspace(debugModeService);
         this.reloadBridge = new KubeXReloadBridge();
         this.commands = new KubeXCommands(new KubeXCommandService(
-            workspaceManager,
-            new KubeXDebugManager(debugModeService),
-            new KubeXDoctorManager()
+            workspace,
+            debugModeService,
+            new KubeXSourceMapService()
         ));
         NeoForge.EVENT_BUS.addListener(this::registerCommands);
         NeoForge.EVENT_BUS.addListener(this::registerClientCommands);
@@ -57,7 +56,7 @@ public final class KubeXNeoForge {
         if(!KubeXNeoForgeConfig.rebuildOnGameStart()) return;
 
         try {
-            var result = workspaceManager.buildAndSync(
+            var result = workspace.buildAndSync(
                 event.getServer().getServerDirectory(),
                 ignored -> {},
                 reloadBridge::reload

@@ -11,6 +11,7 @@ import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.Locale;
 import java.util.function.Consumer;
+import com.ourgram.kubex.KubeXCore;
 
 public final class KubeXWorkspaceBuildService {
     private static final Duration COMMAND_TIMEOUT = Duration.ofMinutes(5);
@@ -21,8 +22,7 @@ public final class KubeXWorkspaceBuildService {
     }
 
     public KubeXWorkspaceBuildResult build(Path gameRoot, Consumer<String> progressListener) {
-        Path normalizedGameRoot = gameRoot.toAbsolutePath().normalize();
-        Path workspaceRoot = normalizedGameRoot.resolve("kubex");
+        Path workspaceRoot = KubeXCore.paths(gameRoot).workspace();
         Path packageJson = workspaceRoot.resolve("package.json");
         Path nodeModules = workspaceRoot.resolve("node_modules");
 

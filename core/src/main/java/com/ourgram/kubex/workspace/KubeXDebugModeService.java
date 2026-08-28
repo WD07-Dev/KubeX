@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import com.ourgram.kubex.KubeXCore;
 
 public final class KubeXDebugModeService {
     private static final String DEBUG_FILE_NAME = ".debug-mode";
@@ -33,6 +34,6 @@ public final class KubeXDebugModeService {
     }
 
     private Path debugFile(Path gameRoot) {
-        return gameRoot.toAbsolutePath().normalize().resolve("kubex").resolve(DEBUG_FILE_NAME);
+        return KubeXCore.paths(gameRoot).workspace().resolve(DEBUG_FILE_NAME);
     }
 }

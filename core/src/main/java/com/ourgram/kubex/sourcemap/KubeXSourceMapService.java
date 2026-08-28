@@ -11,6 +11,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import com.ourgram.kubex.KubeXCore;
 
 public final class KubeXSourceMapService {
     private record SourceMapEntry(int sourceIndex, int sourceLine, int sourceColumn) {}
@@ -21,9 +22,10 @@ public final class KubeXSourceMapService {
     public record ResolvedSourcePosition(String sourcePath, int sourceLine, int sourceColumn) {}
 
     public KubeXSourceMapLookupResult lookup(Path gameRoot, String scriptGroup, int generatedLine, int generatedColumn) {
-        Path normalizedGameRoot = gameRoot.toAbsolutePath().normalize();
-        Path generatedScriptPath = normalizedGameRoot.resolve("kubejs").resolve(scriptGroup).resolve("main.js");
-        Path sourceMapPath = normalizedGameRoot.resolve("kubejs").resolve(scriptGroup).resolve("main.js.map");
+        var paths = KubeXCore.paths(gameRoot);
+        Path normalizedGameRoot = paths.gameDirectory();
+        Path generatedScriptPath = paths.kubejs().resolve(scriptGroup).resolve("main.js");
+        Path sourceMapPath = paths.kubejs().resolve(scriptGroup).resolve("main.js.map");
         if(!Files.exists(sourceMapPath)) {
             return failure(scriptGroup, sourceMapPath, "Source map file was not found");
         }
@@ -144,7 +146,7 @@ public final class KubeXSourceMapService {
         String source = document.sources().get(sourceIndex);
         String sourceRoot = document.sourceRoot();
         List<Path> candidates = new ArrayList<>();
-        Path workspaceOutputRoot = gameRoot.resolve("kubex").resolve("output");
+        Path workspaceOutputRoot = KubeXCore.paths(gameRoot).output();
 
         addCandidate(candidates, workspaceOutputRoot, sourceRoot, source);
         addCandidate(candidates, sourceMapPath.getParent(), sourceRoot, source);

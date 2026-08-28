@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import com.ourgram.kubex.KubeXCore;
 
 public final class KubeXCommandStatus {
     private static final String STATUS_FILE = ".kubex-status.json";
@@ -24,7 +25,7 @@ public final class KubeXCommandStatus {
     private Path statusFile;
 
     public synchronized void start(Path gameRoot, String message) {
-        statusFile = gameRoot.resolve("kubex").resolve(STATUS_FILE);
+        statusFile = KubeXCore.paths(gameRoot).workspace().resolve(STATUS_FILE);
         startedAt = System.currentTimeMillis();
         update(State.RUNNING, message);
     }

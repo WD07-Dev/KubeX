@@ -16,31 +16,34 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Stream;
+import com.ourgram.kubex.KubeXCore;
 
 public final class KubeXWorkspaceInitializer {
     private static final String TS_INCLUDE = "\"./**/*.ts\"";
 
     public KubeXWorkspaceInitResult initialize(Path gameRoot, KubeXInitMode mode) {
-        Path normalizedGameRoot = gameRoot.toAbsolutePath().normalize();
-        Path workspaceRoot = normalizedGameRoot.resolve("kubex");
+        var paths = KubeXCore.paths(gameRoot);
+        Path normalizedGameRoot = paths.gameDirectory();
+        Path workspaceRoot = paths.workspace();
+        Path kubeJsRoot = paths.kubejs();
 
         try {
             createDirectories(workspaceRoot);
             syncWorkspaceRoot(normalizedGameRoot, workspaceRoot);
             syncFileIfExists(
-                normalizedGameRoot.resolve("kubejs").resolve("client_scripts").resolve("jsconfig.json"),
+                kubeJsRoot.resolve("client_scripts").resolve("jsconfig.json"),
                 workspaceRoot.resolve("src").resolve("client_scripts").resolve("jsconfig.json")
             );
             syncFileIfExists(
-                normalizedGameRoot.resolve("kubejs").resolve("server_scripts").resolve("jsconfig.json"),
+                kubeJsRoot.resolve("server_scripts").resolve("jsconfig.json"),
                 workspaceRoot.resolve("src").resolve("server_scripts").resolve("jsconfig.json")
             );
             syncFileIfExists(
-                normalizedGameRoot.resolve("kubejs").resolve("startup_scripts").resolve("jsconfig.json"),
+                kubeJsRoot.resolve("startup_scripts").resolve("jsconfig.json"),
                 workspaceRoot.resolve("src").resolve("startup_scripts").resolve("jsconfig.json")
             );
             syncDirectoryIfExists(
-                normalizedGameRoot.resolve("kubejs").resolve("config"),
+                kubeJsRoot.resolve("config"),
                 workspaceRoot.resolve("src").resolve("config")
             );
             ensureTypeScriptInclude(workspaceRoot.resolve("src").resolve("client_scripts").resolve("jsconfig.json"));

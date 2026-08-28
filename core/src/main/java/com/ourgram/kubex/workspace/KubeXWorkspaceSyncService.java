@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.stream.Stream;
+import com.ourgram.kubex.KubeXCore;
 import com.ourgram.kubex.compiler.CompileOptions;
 import com.ourgram.kubex.compiler.KubeXCompiler;
 
@@ -23,11 +24,11 @@ public final class KubeXWorkspaceSyncService {
     }
 
     public KubeXWorkspaceSyncResult sync(Path gameRoot) {
-        Path normalizedGameRoot = gameRoot.toAbsolutePath().normalize();
-        Path workspaceRoot = normalizedGameRoot.resolve("kubex");
-        Path outputRoot = workspaceRoot.resolve("output");
-        Path kubeJsRoot = normalizedGameRoot.resolve("kubejs");
-        boolean debugEnabled = debugModeService.isEnabled(normalizedGameRoot);
+        var paths = KubeXCore.paths(gameRoot);
+        Path workspaceRoot = paths.workspace();
+        Path outputRoot = paths.output();
+        Path kubeJsRoot = paths.kubejs();
+        boolean debugEnabled = debugModeService.isEnabled(paths.gameDirectory());
 
         try {
             List<Path> publishedFiles = new ArrayList<>();

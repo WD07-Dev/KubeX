@@ -4,11 +4,11 @@ import java.nio.file.Path;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.function.Consumer;
-import com.ourgram.kubex.KubeXDebugManager;
-import com.ourgram.kubex.KubeXDoctorManager;
-import com.ourgram.kubex.KubeXWorkspaceManager;
 import com.ourgram.kubex.sourcemap.KubeXSourceMapLookupResult;
+import com.ourgram.kubex.sourcemap.KubeXSourceMapService;
+import com.ourgram.kubex.workspace.KubeXDebugModeService;
 import com.ourgram.kubex.workspace.KubeXInitMode;
+import com.ourgram.kubex.workspace.KubeXWorkspace;
 import com.ourgram.kubex.workspace.KubeXWorkspaceReloadService;
 
 public final class KubeXCommandService {
@@ -19,19 +19,19 @@ public final class KubeXCommandService {
         "(?:^|[^0-9A-Za-z_./-])(?:[A-Za-z0-9_./-]+\\.js:)?(\\d+)(?::(\\d+))?(?:[^0-9]|$)"
     );
 
-    private final KubeXWorkspaceManager workspaceManager;
-    private final KubeXDebugManager debugManager;
-    private final KubeXDoctorManager doctorManager;
+    private final KubeXWorkspace workspace;
+    private final KubeXDebugModeService debugModeService;
+    private final KubeXSourceMapService sourceMaps;
 
-    public KubeXCommandService(KubeXWorkspaceManager workspaceManager, KubeXDebugManager debugManager, KubeXDoctorManager doctorManager) {
-        this.workspaceManager = workspaceManager;
-        this.debugManager = debugManager;
-        this.doctorManager = doctorManager;
+    public KubeXCommandService(KubeXWorkspace workspace, KubeXDebugModeService debugModeService, KubeXSourceMapService sourceMaps) {
+        this.workspace = workspace;
+        this.debugModeService = debugModeService;
+        this.sourceMaps = sourceMaps;
     }
 
     public KubeXCommandResult initialize(Path gameRoot, KubeXInitMode mode) {
         try {
-            var result = workspaceManager.initialize(gameRoot, mode);
+            var result = workspace.initialize(gameRoot, mode);
             if(!result.success()) {
                 return new KubeXCommandResult(false, result.message());
             }
@@ -44,7 +44,7 @@ public final class KubeXCommandService {
 
     public KubeXCommandResult build(Path gameRoot, Consumer<String> progressListener, KubeXWorkspaceReloadService reloadService) {
         try {
-            var result = workspaceManager.buildAndSync(gameRoot, progressListener, reloadService);
+            var result = workspace.buildAndSync(gameRoot, progressListener, reloadService);
             return new KubeXCommandResult(result.success(), result.message());
         } catch (Exception exception) {
             return new KubeXCommandResult(false, failureMessage(exception));
@@ -53,7 +53,7 @@ public final class KubeXCommandService {
 
     public KubeXCommandResult sync(Path gameRoot, KubeXWorkspaceReloadService reloadService) {
         try {
-            var result = workspaceManager.sync(gameRoot);
+            var result = workspace.sync(gameRoot);
             if(!result.success()) {
                 return new KubeXCommandResult(false, result.message());
             }
@@ -70,7 +70,7 @@ public final class KubeXCommandService {
 
     public KubeXCommandResult doctor(Path gameRoot, String scriptGroup, int line, int column) {
         try {
-            var result = doctorManager.lookup(gameRoot, scriptGroup, line, column);
+            var result = sourceMaps.lookup(gameRoot, scriptGroup, line, column);
             if(!result.success()) {
                 return new KubeXCommandResult(false, result.message());
             }
@@ -88,7 +88,7 @@ public final class KubeXCommandService {
                 return new KubeXCommandResult(false, "invalid position '" + position + "'");
             }
 
-            var result = doctorManager.lookupAny(gameRoot, position, parsed.line(), parsed.column());
+            var result = sourceMaps.lookupAny(gameRoot, position, parsed.line(), parsed.column());
             if(!result.success()) {
                 return new KubeXCommandResult(false, result.message());
             }
@@ -110,7 +110,7 @@ public final class KubeXCommandService {
 
     public KubeXCommandResult toggleDebug(Path gameRoot) {
         try {
-            boolean enabled = debugManager.toggle(gameRoot);
+            boolean enabled = debugModeService.toggle(gameRoot);
             return new KubeXCommandResult(true, "Debug mode " + (enabled ? "enabled" : "disabled"));
         } catch (Exception exception) {
             return new KubeXCommandResult(false, failureMessage(exception));
@@ -119,7 +119,7 @@ public final class KubeXCommandService {
 
     public KubeXCommandResult setDebug(Path gameRoot, boolean enabled) {
         try {
-            debugManager.setEnabled(gameRoot, enabled);
+            debugModeService.setEnabled(gameRoot, enabled);
             return new KubeXCommandResult(true, "Debug mode " + (enabled ? "enabled" : "disabled"));
         } catch (Exception exception) {
             return new KubeXCommandResult(false, failureMessage(exception));
