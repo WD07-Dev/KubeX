@@ -10,7 +10,6 @@ base {
 
 dependencies {
     implementation project(":core")
-    implementation "dev.latvian.mods:kubejs-neoforge:${kubejs_version}"
 }
 
 neoForge {
