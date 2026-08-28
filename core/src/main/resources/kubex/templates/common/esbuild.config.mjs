@@ -1,7 +1,6 @@
 import { build } from "esbuild";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { transformAsync } from "@babel/core";
-
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 var groups = ["client_scripts", "server_scripts", "startup_scripts"];
 var externalPackages = [
     "@package",
@@ -17,9 +16,9 @@ for (var group of groups) {
 
     if (existsSync(`src/${group}/main.ts`)) {
         entry = `src/${group}/main.ts`;
-    } else if (existsSync(`src/${group}/main.js`)) {
+    }else if(existsSync(`src/${group}/main.js`)) {
         entry = `src/${group}/main.js`;
-    } else {
+    }else {
         console.warn(`No entry file found for ${group}`);
         continue;
     }
@@ -40,9 +39,7 @@ for (var group of groups) {
     });
 
     var builtCode = readFileSync(outfile, "utf8");
-    var builtMap = existsSync(sourceMapFile)
-    ? JSON.parse(readFileSync(sourceMapFile, "utf8")) : undefined;
-
+    var builtMap = existsSync(sourceMapFile) ? JSON.parse(readFileSync(sourceMapFile, "utf8")) : undefined;
     var transformed = await transformAsync(builtCode, {
         filename: outfile,
         inputSourceMap: builtMap,

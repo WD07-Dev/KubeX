@@ -1,4 +1,5 @@
 .probe
 .vscode
+.debug-mode
 node_modules
 output

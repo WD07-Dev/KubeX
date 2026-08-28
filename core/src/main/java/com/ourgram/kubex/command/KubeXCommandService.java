@@ -13,6 +13,7 @@ import com.ourgram.kubex.workspace.KubeXWorkspaceReloadService;
 
 public final class KubeXCommandService {
     private record ParsedDoctorPosition(int line, int column) {}
+    public record KubeXCommandResult(boolean success, String message) {}
 
     private static final Pattern DOCTOR_POSITION_PATTERN = Pattern.compile(
         "(?:^|[^0-9A-Za-z_./-])(?:[A-Za-z0-9_./-]+\\.js:)?(\\d+)(?::(\\d+))?(?:[^0-9]|$)"
