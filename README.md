@@ -106,20 +106,6 @@ If ProbeJS has already generated `.probe`, `.vscode`, or `jsconfig.json`, KubeX 
 
 ---
 
-## Installation
-
-Recommended combination at the moment:
-
-- Minecraft `1.21.1`
-- NeoForge `21.1.x`
-- KubeJS `2101.7.2-build.368`
-- Rhino `2101.2.8-build.91`
-- KubeX `0.0.3`
-
-KubeX is primarily a development mod for KubeJS. To use `/kubex` commands and workspace sync features, KubeX needs to be present in the environment where you are developing.
-
----
-
 ## Getting Started
 
 ### 1. Initialize a workspace
