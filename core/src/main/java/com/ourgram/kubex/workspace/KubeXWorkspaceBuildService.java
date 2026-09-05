@@ -35,7 +35,7 @@ public final class KubeXWorkspaceBuildService {
                 return new KubeXWorkspaceBuildResult(false, workspaceRoot, "package.json was not found in kubex");
             }
 
-            String npm = isWindows() ? "npm.cmd" : "npm";
+            KubeXNodeRuntime.NpmCommand npm = KubeXNodeRuntime.findNpm();
             boolean installedDependencies = false;
 
             if(!Files.isDirectory(nodeModules)) {
@@ -68,11 +68,16 @@ public final class KubeXWorkspaceBuildService {
         }
     }
 
-    private void run(Path workspaceRoot, Consumer<String> progressListener, String... command) throws IOException, InterruptedException {
-        Process process = new ProcessBuilder(command)
-            .directory(workspaceRoot.toFile())
-            .redirectErrorStream(true)
-            .start();
+    private void run(Path workspaceRoot, Consumer<String> progressListener, KubeXNodeRuntime.NpmCommand npm, String... arguments) throws IOException, InterruptedException {
+        String[] command = new String[arguments.length + 1];
+        command[0] = npm.executable();
+        System.arraycopy(arguments, 0, command, 1, arguments.length);
+
+        ProcessBuilder processBuilder = new ProcessBuilder(command)
+        .directory(workspaceRoot.toFile())
+        .redirectErrorStream(true);
+        npm.configure(processBuilder);
+        Process process = processBuilder.start();
 
         Deque<String> outputLines = new ArrayDeque<>();
         Thread readerThread = new Thread(() -> pumpOutput(process, progressListener, outputLines), "kubex-build-output");
@@ -160,10 +165,6 @@ public final class KubeXWorkspaceBuildService {
             || lower.contains("createprocess error=2")
             || lower.contains("error=2")
             || lower.contains("no such file or directory");
-    }
-
-    private boolean isWindows() {
-        return System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("win");
     }
 
     private String failureMessage(Exception exception) {

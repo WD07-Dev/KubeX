@@ -156,7 +156,7 @@ KubeX will automatically:
 - sync them into `kubejs/`
 - run `/reload` when possible
 
-If Node.js or npm is not available, KubeX will print a message telling you to install it.
+KubeX searches `PATH`, Homebrew, nvm, Volta, fnm, asdf, mise, MacPorts, Snap, and common Linux system locations for npm.
 
 ---
 
