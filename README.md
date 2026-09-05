@@ -194,6 +194,11 @@ mod.name=Example KubeJS Mod
 mod.version=1.0.0
 mod.description=KubeJS scripts exported by KubeX.
 mod.authors=YourName
+license=All Rights Reserved
+
+# Optional path relative to kubex/src/assets
+# mod.icon=example_kubejs_mod/icon.png
+
 kubejs.version=[2101.7.2,)
 
 # Optional dependency
@@ -204,6 +209,8 @@ dependency.jei.side=CLIENT
 ```
 
 `mod.package` is required and must be a valid Java package name. It is used by the generated KubeJS plugin class, written as `<mod.package>.Plugin`.
+
+`license` is written to the exported mod metadata. `mod.icon` is optional and points to an image below `kubex/src/assets`; its value becomes `assets/<mod.icon>` inside the exported JAR.
 
 Optional dependencies start with `dependency.<modid>.version`. `mandatory`, `ordering`, and `side` are optional; their defaults are `true`, `AFTER`, and `BOTH`.
 

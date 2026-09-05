@@ -37,6 +37,7 @@ public final class ExportService {
 
         try {
             ExportConfig config = ExportConfig.load(configFile);
+            validateIcon(workspace, config);
             Map<String, String> scripts = compileScripts(workspace);
             if(scripts.isEmpty()) {
                 return new ExportResult(false, null, "No compiled scripts were found in kubex/output. Run /kubex build first.");
@@ -61,6 +62,15 @@ public final class ExportService {
             scripts.put(group.scriptType(), output);
         }
         return scripts;
+    }
+
+    private void validateIcon(Path workspace, ExportConfig config) throws IOException {
+        if(config.icon().isBlank()) return;
+        Path assets = workspace.resolve("src").resolve("assets").toAbsolutePath().normalize();
+        Path icon = assets.resolve(config.icon()).normalize();
+        if(!icon.startsWith(assets) || !Files.isRegularFile(icon)) {
+            throw new IOException("mod.icon was not found in src/assets: " + config.icon());
+        }
     }
 
     private Exporter findExporter() throws IOException {

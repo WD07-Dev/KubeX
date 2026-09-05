@@ -66,11 +66,14 @@ final class JarWriter {
         StringBuilder toml = new StringBuilder();
         toml.append("modLoader = \"javafml\"\n");
         toml.append("loaderVersion = \"[2,)\"\n");
-        toml.append("license = \"All Rights Reserved\"\n\n");
+        toml.append("license = \"").append(toml(config.license())).append("\"\n\n");
         toml.append("[[mods]]\n");
         toml.append("modId = \"").append(toml(config.modId())).append("\"\n");
         toml.append("version = \"").append(toml(config.version())).append("\"\n");
         toml.append("displayName = \"").append(toml(config.modName())).append("\"\n");
+        if(!config.icon().isBlank()) {
+            toml.append("logoFile = \"assets/").append(toml(config.icon())).append("\"\n");
+        }
         toml.append("authors = \"").append(toml(config.authors())).append("\"\n");
         toml.append("description = \"").append(toml(config.description())).append("\"\n\n");
         appendDependency(toml, config.modId(), new ExportConfig.Dependency("kubejs", config.kubeJsVersion(), true, "AFTER", "BOTH"));

@@ -17,6 +17,8 @@ public record ExportConfig(
     String version,
     String description,
     String authors,
+    String license,
+    String icon,
     String kubeJsVersion,
     List<Dependency> dependencies
 ) {
@@ -45,6 +47,7 @@ public record ExportConfig(
         if(!VERSION_PATTERN.matcher(version).matches()) {
             throw new IOException("mod.version may only use letters, numbers, dots, underscores, plus signs, or hyphens");
         }
+        String icon = icon(properties);
 
         List<Dependency> dependencies = new ArrayList<>();
         for(String key : properties.stringPropertyNames()) {
@@ -72,6 +75,8 @@ public record ExportConfig(
             version,
             properties.getProperty("mod.description", ""),
             properties.getProperty("mod.authors", ""),
+            properties.getProperty("license", "All Rights Reserved").trim(),
+            icon,
             properties.getProperty("kubejs.version", "[2101.7.2,)"),
             List.copyOf(dependencies)
         );
@@ -81,5 +86,20 @@ public record ExportConfig(
         String value = properties.getProperty(key, "").trim();
         if(value.isEmpty()) throw new IOException("Missing export setting: " + key);
         return value;
+    }
+
+    private static String icon(Properties properties) throws IOException {
+        String value = properties.getProperty("mod.icon", "").trim();
+        if(value.isEmpty()) return "";
+
+        try {
+            Path path = Path.of(value).normalize();
+            if(path.isAbsolute() || path.startsWith("..")) {
+                throw new IOException("mod.icon must be a path inside src/assets");
+            }
+            return path.toString().replace('\\', '/');
+        } catch(RuntimeException exception) {
+            throw new IOException("mod.icon must be a valid path inside src/assets", exception);
+        }
     }
 }
