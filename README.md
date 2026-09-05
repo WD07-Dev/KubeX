@@ -56,6 +56,7 @@ kubex/
   .vscode/
   esbuild.config.mjs
   export.properties
+  export/                 # created by /kubex export
   package.json
   output/
   src/
@@ -202,11 +203,11 @@ dependency.jei.ordering=AFTER
 dependency.jei.side=CLIENT
 ```
 
-`mod.package` is the Java package used by the generated KubeJS plugin class. The exported plugin is written as `<mod.package>.Plugin`.
+`mod.package` is required and must be a valid Java package name. It is used by the generated KubeJS plugin class, written as `<mod.package>.Plugin`.
 
 Optional dependencies start with `dependency.<modid>.version`. `mandatory`, `ordering`, and `side` are optional; their defaults are `true`, `AFTER`, and `BOTH`.
 
-Exporters are registered by each platform module in `META-INF/kubex/exporter.properties`. No loader option is needed in `export.properties` because only the exporter for the installed KubeX platform is available at runtime.
+Exporters are registered by each platform module in `META-INF/kubex/exporter.properties`. No loader option is needed in `export.properties`: KubeX automatically uses the exporter provided by the platform module that is currently installed. It reports an error if no exporter, or more than one exporter, is available.
 
 ## Commands
 
