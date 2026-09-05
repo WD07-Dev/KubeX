@@ -7,7 +7,7 @@ public final class KubeXCore {
 
     private KubeXCore() {}
 
-    public static KubeXPaths paths(Path gameDirectory) {
-        return KubeXPaths.fromGameDirectory(gameDirectory);
+    public static Paths paths(Path gameDirectory) {
+        return Paths.fromGameDirectory(gameDirectory);
     }
 }

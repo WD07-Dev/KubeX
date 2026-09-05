@@ -5,5 +5,4 @@ public record CompileResult(
     String inputSource,
     String outputSource,
     int[] generatedToOriginalLineMap
-) {
-}
+) {}

@@ -1,4 +1,4 @@
-var __kubexRuntime = typeof Java !== "undefined" ? Java.loadClass("com.ourgram.kubex.neoforge.cmd.KubeXRuntimeBridge") : null;
+var __kubexRuntime = typeof Java !== "undefined" ? Java.loadClass("com.ourgram.kubex.neoforge.cmd.RuntimeBridge") : null;
 var __kubexReport = typeof __kubexReport === "function" ? __kubexReport : function (error, meta) {
     var detail = error && error.message ? error.message : String(error);
     var stackText = error && error.stack ? String(error.stack) : detail;

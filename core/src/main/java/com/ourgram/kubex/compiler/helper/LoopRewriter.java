@@ -133,9 +133,9 @@ public final class LoopRewriter implements CompilerHelper {
         }
 
         return call.getTarget() instanceof Name target
-            && helperName.equals(target.getIdentifier())
-            && call.getArguments().isEmpty()
-            && loopName.getIdentifier() != null;
+        && helperName.equals(target.getIdentifier())
+        && call.getArguments().isEmpty()
+        && loopName.getIdentifier() != null;
     }
 
     private String buildLoopReplacementSource(ForLoop forLoop, LoopHelper helper, String source) {
@@ -518,10 +518,7 @@ public final class LoopRewriter implements CompilerHelper {
     }
 
     private String applyEdits(String source, List<Edit> edits) {
-        if(edits.isEmpty()) {
-            return source;
-        }
-
+        if(edits.isEmpty()) return source;
         List<Edit> ordered = new ArrayList<>(edits);
         ordered.sort(Comparator.comparingInt(Edit::start).reversed());
         StringBuilder builder = new StringBuilder(source);

@@ -2,167 +2,90 @@
 
 ![KubeX Logo](image/kubex.logo.png)
 
-> A dedicated workspace mod for KubeJS development
+KubeX is a development workspace for KubeJS. Instead of keeping source files, build output, editor files, and generated data all in `kubejs/`, it keeps the project in `kubex/` and publishes only the final result to KubeJS.
 
-KubeX is a KubeJS development helper mod that lets you work in a separate `kubex/` workspace instead of writing everything directly inside `kubejs/`.
+NeoForge is the only export target at the moment. KubeX uses the exporter included by the installed platform module, so Fabric and other loaders can be added without changing the workspace or the core compiler.
 
-The idea is simple:
+## What KubeX Does
 
-- write source code in `kubex/src`
-- build into `kubex/output`
-- let KubeX post-process the output for Rhino / KubeJS
-- publish the final result into `kubejs/`
-- trace errors back to the original source
+- Creates a JavaScript or TypeScript workspace with `/kubex init`.
+- Runs the project's esbuild configuration with `/kubex build`.
+- Rewrites bundled output where Rhino needs older syntax.
+- Copies scripts, assets, data, and config into `kubejs/` with `/kubex sync`.
+- Keeps source maps usable after KubeX changes generated JavaScript.
+- Provides `/kubex doctor` and debug mode for errors in bundled scripts.
+- Exports a workspace as a separate KubeJS mod JAR.
 
-KubeX is not meant to replace ProbeJS. It is designed to work with ProbeJS-generated development assets such as `.probe`, `.vscode`, and `jsconfig.json`, then build a better workflow on top of them.
+KubeX does not replace ProbeJS. ProbeJS still provides typings and editor metadata. When they exist, KubeX brings `.probe`, `.vscode`, and `jsconfig.json` into the workspace.
 
----
+## Requirements
 
-## Why KubeX?
+- Minecraft 1.21.1 with NeoForge
+- KubeJS and Rhino
+- Node.js only when building a workspace
 
-Traditional KubeJS development usually has a few recurring problems:
+ProbeJS is optional, but recommended if you want typings and editor completion.
 
-- scripts are managed directly inside `kubejs/`
-- large projects become hard to organize
-- bundled JavaScript is difficult to debug
-- Rhino does not handle modern JavaScript syntax well
-- callback errors can be hard to find
-- generated line numbers do not match the original source
+## Quick Start
 
-KubeX addresses these problems with a dedicated workspace, build pipeline, sync flow, source maps, and runtime debugging support.
-
----
-
-## Current Direction
-
-KubeX currently targets NeoForge first.
-
-The flow looks like this:
-
-```text
-ProbeJS
-  ↓
-development assets (.probe, .vscode, jsconfig.json)
-  ↓
-KubeX
-  ↓
-develop inside kubex/src
-  ↓
-build with esbuild
-  ↓
-KubeX post-processing
-  - Rhino compatibility lowering
-  - debug wrapping
-  - source map preservation
-  ↓
-sync into kubejs
-  ↓
-Minecraft / KubeJS runtime
-```
-
----
-
-## Features
-
-- dedicated `kubex/` workspace
-- `js` or `ts` project initialization
-- automatic `esbuild.config.mjs` and `package.json` generation
-- sync `output/*.js` and `*.js.map` into `kubejs/`
-- Rhino-friendly post-processing
-- debug mode for callback-heavy code
-- source map based source lookup
-- `/kubex doctor` for mapping generated lines back to original source
-- `/kubex build` to run `npm install` and `npm run build` automatically
-
----
-
-## Workspace Layout
-
-Running `/kubex init js` or `/kubex init ts` creates this structure:
-
-```text
-kubex/
-├── .probe/
-├── .vscode/
-├── esbuild.config.mjs
-├── output/
-├── package.json
-└── src/
-    ├── assets/
-    ├── client_scripts/
-    │   ├── jsconfig.json
-    │   └── main.js or main.ts
-    ├── config/
-    ├── data/
-    ├── server_scripts/
-    │   ├── jsconfig.json
-    │   └── main.js or main.ts
-    └── startup_scripts/
-        ├── jsconfig.json
-        └── main.js or main.ts
-```
-
-If ProbeJS has already generated `.probe`, `.vscode`, or `jsconfig.json`, KubeX can mirror those into the workspace so the development setup stays compatible.
-
----
-
-## Getting Started
-
-### 1. Initialize a workspace
-
-For JavaScript:
-
-```mcfunction
-/kubex init js
-```
-
-For TypeScript:
+Create a workspace from inside a KubeJS world or instance:
 
 ```mcfunction
 /kubex init ts
 ```
 
-### 2. Open the workspace
+Use `js` instead of `ts` if the initial entry files should be JavaScript. This choice only creates the first `main` files. A JavaScript project can still contain TypeScript files later.
 
-It is recommended to open the `kubex/` folder in your editor instead of the game root.
-
-### 3. Write code
-
-For example:
-
-```text
-kubex/src/server_scripts/main.ts
-```
-
-or
-
-```text
-kubex/src/server_scripts/main.js
-```
-
-### 4. Build
-
-In-game:
+Open `kubex/` in your editor, edit a script such as `kubex/src/server_scripts/main.ts`, then build it:
 
 ```mcfunction
 /kubex build
 ```
 
-KubeX will automatically:
+KubeX installs npm dependencies when `node_modules` is missing, runs `npm run build`, processes the files in `kubex/output`, and synchronizes the result into `kubejs/`.
 
-- run `npm install` if `node_modules` is missing
-- run `npm run build`
-- inspect the generated files in `kubex/output`
-- sync them into `kubejs/`
-- run `/reload` when possible
+It looks for npm through normal `PATH` lookup and common Node.js installations on Windows, macOS, and Linux, including nvm, Homebrew, Volta, fnm, asdf, mise, MacPorts, Snap, and Linux package locations. If npm cannot be found, install Node.js normally and restart the game.
 
-KubeX searches `PATH`, Homebrew, nvm, Volta, fnm, asdf, mise, MacPorts, Snap, and common Linux system locations for npm.
+## Workspace
 
----
+`/kubex init` creates the following layout:
 
-## Manual Build
+```text
+kubex/
+  .probe/
+  .vscode/
+  esbuild.config.mjs
+  export.properties
+  package.json
+  output/
+  src/
+    assets/
+    client_scripts/
+      jsconfig.json
+      main.js or main.ts
+    config/
+    data/
+    server_scripts/
+      jsconfig.json
+      main.js or main.ts
+    startup_scripts/
+      jsconfig.json
+      main.js or main.ts
+```
 
-You can also build from the workspace directly:
+Running init again is safe. Existing `main.js` and `main.ts` files are left alone. `.probe` is synchronized from the game root, `.vscode` is refreshed from the game root, and existing KubeJS `jsconfig.json` files are copied into the matching script directories. KubeX also adds TypeScript files to their `include` list.
+
+The common workspace files such as `package.json`, `esbuild.config.mjs`, and `export.properties` are created only when missing.
+
+## Build and Sync
+
+You can run the build from the game:
+
+```mcfunction
+/kubex build
+```
+
+Or run it yourself:
 
 ```bash
 cd kubex
@@ -170,7 +93,13 @@ npm install
 npm run build
 ```
 
-This usually produces:
+Then publish the output:
+
+```mcfunction
+/kubex sync
+```
+
+The default esbuild configuration writes these files:
 
 ```text
 kubex/output/client_scripts.js
@@ -178,218 +107,118 @@ kubex/output/server_scripts.js
 kubex/output/startup_scripts.js
 ```
 
-Then run:
-
-```mcfunction
-/kubex sync
-```
-
----
-
-## How Sync Works
-
-`/kubex sync` reads files from `kubex/output` and publishes them into `kubejs/`.
-
-The flow is roughly:
+KubeX converts them to Rhino-friendly KubeJS scripts and writes them as `kubejs/<group>/main.js`. It also synchronizes these directories:
 
 ```text
-kubex/output/*.js
-  ↓
-KubeX compiler/post-process
-  ↓
-kubejs/client_scripts/main.js
-kubejs/server_scripts/main.js
-kubejs/startup_scripts/main.js
+kubex/src/assets  -> kubejs/assets
+kubex/src/config  -> kubejs/config
+kubex/src/data    -> kubejs/data
 ```
 
-During this step, KubeX:
+Synchronization removes files that no longer exist in the workspace, so `kubejs/` reflects the published workspace state.
 
-- lowers Rhino-problematic patterns
-- injects debug wrapping when needed
-- copies `.js.map` files
-- preserves source map lookup support
+When KubeX has access to the integrated or dedicated server, it reloads after a successful sync. A client-only installation connected to a remote server can update its local files, but cannot reload that remote server.
 
----
+Build progress is saved to `kubex/.kubex-status.json`. It is intended for editor extensions or other tools that want to show build state.
 
-## Debug Mode
+## Source Maps and Debugging
 
-Debug mode is meant to make callback-related failures easier to track down.
+Bundling changes line numbers, and KubeX may change them again while lowering syntax. KubeX stores the extra line mapping so `doctor` can point back to the source you edited.
 
-```mcfunction
-/kubex debug
-```
-
-or
-
-```mcfunction
-/kubex debug on
-/kubex debug off
-```
-
-When enabled, KubeX attempts to wrap selected execution points so exceptions produce more useful source information.
-
-This is especially useful for:
-
-- GUI button callbacks
-- event callbacks
-- functions that become hard to trace after bundling
-
----
-
-## Doctor
-
-If a bundled error looks like this:
+For example, if KubeJS reports this:
 
 ```text
 server_scripts/main.js:412
 ```
 
-KubeX can trace it back to the original source:
+run:
 
 ```mcfunction
 /kubex doctor server_scripts 412 1
 ```
 
-or
+or paste the position directly:
 
 ```mcfunction
 /kubex doctor "main.js:412:1"
 ```
 
-When available, the result looks like:
+When the source map is available, the result includes the original file, line, column, and source line.
 
-```text
-server_scripts/main.ts:37:19
-const item = array.at(-1)
-                  ^
-```
-
-This lets you debug the code you actually wrote instead of the bundled output.
-
----
-
-## Relationship with ProbeJS
-
-KubeX is not a ProbeJS competitor.
-
-ProbeJS is responsible for things like:
-
-- typing generation
-- development metadata
-- `.probe`
-- `.vscode`
-- `jsconfig.json`
-
-KubeX is responsible for things like:
-
-- workspace management
-- build result sync
-- Rhino compatibility post-processing
-- debug mode
-- source map tracing
-- development commands
-
-In short:
-
-```text
-ProbeJS = development assets
-KubeX   = development workflow
-```
-
----
-
-## Commands
-
-Initialize:
+Debug mode adds exception reporting around supported callbacks. It is useful when a GUI callback or event fails without an obvious KubeJS error.
 
 ```mcfunction
-/kubex init js
-/kubex init ts
-```
-
-Build:
-
-```mcfunction
-/kubex build
-```
-
-Sync:
-
-```mcfunction
-/kubex sync
-```
-
-Debug:
-
-```mcfunction
-/kubex debug
 /kubex debug on
 /kubex debug off
 ```
 
-Source lookup:
+KubeX does not add a second wrapper when a callback already has a top-level `try/catch`.
+
+## Rebuild on Startup
+
+Automatic rebuilding is disabled by default. To build, sync, and reload when a game server starts, set this in `config/kubex-common.toml`:
+
+```toml
+[general]
+rebuildOnGameStart = true
+```
+
+This runs Node.js during startup, so it is best used in a development instance rather than a normal player pack.
+
+## Exporting a Mod
+
+`/kubex export` turns the compiled workspace into a separate mod. Build first, fill in `kubex/export.properties`, and export:
 
 ```mcfunction
-/kubex doctor <group> <line> [column]
-/kubex doctor "main.js:1450:1"
+/kubex build
+/kubex export
 ```
 
-Current supported groups:
-
-- `client_scripts`
-- `server_scripts`
-- `startup_scripts`
-
----
-
-## Current Limitations
-
-KubeX is still under active development, and a few limitations are worth noting:
-
-- the current build toolchain is Node.js-based
-- type generation itself is still handled by ProbeJS
-- not every modern JavaScript feature is guaranteed yet
-- Rhino compatibility lowering is still being expanded
-- NeoForge is the primary target right now
-
----
-
-## Building the Mod
-
-To build the mod itself from the project root:
-
-```bash
-./gradlew :neoforge:build
-```
-
-Or for a quick compile check:
-
-```bash
-./gradlew :core:compileJava :neoforge:compileJava
-```
-
----
-
-## Vision
-
-The long-term goal is simple:
-
-> Make KubeX the first tool KubeJS developers install.
-
-The intended workflow is:
+The resulting JAR is written here:
 
 ```text
-ProbeJS
-  ↓
-KubeX Workspace
-  ↓
-Build
-  ↓
-Rhino-safe Output
-  ↓
-Reload
-  ↓
-Debug
+kubex/export/<mod.id>-<mod.version>.jar
 ```
 
-KubeX aims to become a single, practical workflow layer for KubeJS development.
+The exported NeoForge mod requires KubeJS, but it does not require KubeX. It contains its own small KubeJS plugin, the processed startup/server/client scripts, and the files under `src/assets` and `src/data`.
+
+`src/config` is not exported because it is per-instance configuration. It is only used by local workspace synchronization.
+
+An `export.properties` file looks like this:
+
+```properties
+mod.package=example.kubejs.mod
+mod.id=example_kubejs_mod
+mod.name=Example KubeJS Mod
+mod.version=1.0.0
+mod.description=KubeJS scripts exported by KubeX.
+mod.authors=YourName
+kubejs.version=[2101.7.2,)
+
+# Optional dependency
+dependency.jei.version=[19.0,)
+dependency.jei.mandatory=false
+dependency.jei.ordering=AFTER
+dependency.jei.side=CLIENT
+```
+
+`mod.package` is the Java package used by the generated KubeJS plugin class. The exported plugin is written as `<mod.package>.Plugin`.
+
+Optional dependencies start with `dependency.<modid>.version`. `mandatory`, `ordering`, and `side` are optional; their defaults are `true`, `AFTER`, and `BOTH`.
+
+Exporters are registered by each platform module in `META-INF/kubex/exporter.properties`. No loader option is needed in `export.properties` because only the exporter for the installed KubeX platform is available at runtime.
+
+## Commands
+
+```mcfunction
+/kubex init js
+/kubex init ts
+/kubex build
+/kubex sync
+/kubex export
+/kubex debug
+/kubex debug on
+/kubex debug off
+/kubex doctor <client_scripts|server_scripts|startup_scripts> <line> [column]
+/kubex doctor "main.js:1450:1"
+```
