@@ -11,6 +11,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import java.util.function.Consumer;
 import com.ourgram.kubex.KubeXCore;
 import com.ourgram.kubex.compiler.CompileOptions;
 import com.ourgram.kubex.compiler.ScriptCompiler;
@@ -29,6 +30,10 @@ public final class ExportService {
     private final ScriptCompiler compiler = new ScriptCompiler();
 
     public ExportResult export(Path gameRoot) {
+        return export(gameRoot, ignored -> {});
+    }
+
+    public ExportResult export(Path gameRoot, Consumer<String> progress) {
         Path workspace = KubeXCore.paths(gameRoot).workspace();
         Path configFile = workspace.resolve(CONFIG_FILE);
         if(!Files.isRegularFile(configFile)) {
@@ -36,27 +41,30 @@ public final class ExportService {
         }
 
         try {
+            progress.accept("Reading export configuration...");
             ExportConfig config = ExportConfig.load(configFile);
+            progress.accept("Checking export icon...");
             validateIcon(workspace, config);
-            Map<String, String> scripts = compileScripts(workspace);
+            Map<String, String> scripts = compileScripts(workspace, progress);
             if(scripts.isEmpty()) {
                 return new ExportResult(false, null, "No compiled scripts were found in kubex/output. Run /kubex build first.");
             }
 
             Path outputFile = workspace.resolve("export").resolve(config.modId() + "-" + config.version() + ".jar");
-            findExporter().export(workspace, outputFile, config, scripts);
+            findExporter().export(workspace, outputFile, config, scripts, progress);
             return new ExportResult(true, outputFile, "Exported " + outputFile.getFileName());
         } catch(Exception exception) {
             return new ExportResult(false, null, failureMessage(exception));
         }
     }
 
-    private Map<String, String> compileScripts(Path workspace) throws IOException {
+    private Map<String, String> compileScripts(Path workspace, Consumer<String> progress) throws IOException {
         Map<String, String> scripts = new LinkedHashMap<>();
         for(ScriptGroup group : SCRIPT_GROUPS) {
             Path source = workspace.resolve("output").resolve(group.outputFile() + ".js");
             if(!Files.isRegularFile(source)) continue;
 
+            progress.accept("Compiling " + group.scriptType() + " scripts...");
             String input = Files.readString(source, StandardCharsets.UTF_8);
             String output = compiler.compile(source.getFileName().toString(), input, CompileOptions.DEFAULT).outputSource();
             scripts.put(group.scriptType(), output);

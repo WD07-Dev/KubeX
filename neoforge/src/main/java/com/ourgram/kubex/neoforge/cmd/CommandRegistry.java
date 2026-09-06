@@ -153,12 +153,15 @@ public final class CommandRegistry {
         source.sendSuccess(() -> Component.literal("[KubeX] Exporting workspace mod..."), false);
 
         BACKGROUND_EXECUTOR.execute(() -> {
-            var result = commandService.export(gameRoot);
+            status.start(gameRoot, "KubeX export is running.");
+            var result = commandService.export(gameRoot, status::progress);
             if(!result.success()) {
+                status.fail(result.message());
                 source.sendFailure(Component.literal("[KubeX] Export failed: " + result.message()));
                 return;
             }
 
+            status.complete(result.message());
             source.sendSuccess(() -> Component.literal("[KubeX] " + result.message()), false);
         });
         return 1;

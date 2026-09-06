@@ -71,7 +71,11 @@ public final class CommandService {
     }
 
     public CommandResult export(Path gameRoot) {
-        var result = exportService.export(gameRoot);
+        return export(gameRoot, ignored -> {});
+    }
+
+    public CommandResult export(Path gameRoot, Consumer<String> progress) {
+        var result = exportService.export(gameRoot, progress);
         return new CommandResult(result.success(), result.message());
     }
 

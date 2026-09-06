@@ -120,7 +120,7 @@ Synchronization removes files that no longer exist in the workspace, so `kubejs/
 
 When KubeX has access to the integrated or dedicated server, it reloads after a successful sync. A client-only installation connected to a remote server can update its local files, but cannot reload that remote server.
 
-Build progress is saved to `kubex/.kubex-status.json`. It is intended for editor extensions or other tools that want to show build state.
+Build and export progress are saved to `kubex/.kubex-status.json`. It is intended for editor extensions or other tools that want to show build state.
 
 ## Source Maps and Debugging
 
