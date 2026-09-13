@@ -231,12 +231,12 @@ public final class AsyncRewriter implements CompilerHelper {
                 values -> next.apply("[" + String.join(",", values) + "]")
             );
             if(node instanceof ObjectLiteral object) return properties(object.getElements(), 0, new ArrayList<>(), next);
+            if(node instanceof UpdateExpression update) {
+                String op = update.getOperator() == Token.INC ? "++" : "--";
+                return reference(update.getOperand(), value -> next.apply(update.isPostfix() ? value + op : op + value));
+            }
             if(node instanceof UnaryExpression unary) {
                 if(unary.getOperator() == Token.DELPROP) return reference(unary.getOperand(), value -> next.apply("delete " + value));
-                if(unary.getOperator() == Token.INC || unary.getOperator() == Token.DEC) {
-                    String op = unary.getOperator() == Token.INC ? "++" : "--";
-                    return reference(unary.getOperand(), value -> next.apply(unary.isPostfix() ? value + op : op + value));
-                }
                 return capture(unary.getOperand(), value -> next.apply("(" + operator(unary.getOperator()) + " " + value + ")"));
             }
             throw unsupported(node, "await in " + node.getClass().getSimpleName());
@@ -404,7 +404,10 @@ public final class AsyncRewriter implements CompilerHelper {
                 String chain = block(tried.getTryBlock());
                 if(!tried.getCatchClauses().isEmpty()) {
                     var caught = tried.getCatchClauses().get(0);
-                    chain += ".catch(function(" + caught.getVarName().getIdentifier() + ") { return " + block(caught.getBody()) + "; }.bind(this))";
+                    AstNode binding = caught.getVarName();
+                    if(binding != null && !(binding instanceof Name)) throw unsupported(binding, "unlowered catch destructuring");
+                    String parameter = binding instanceof Name name ? name.getIdentifier() : fresh();
+                    chain += ".catch(function(" + parameter + ") { return " + block(caught.getBody()) + "; }.bind(this))";
                 }
                 if(tried.getFinallyBlock() != null) {
                     String cleanup = block(tried.getFinallyBlock());
@@ -491,14 +494,7 @@ public final class AsyncRewriter implements CompilerHelper {
         Context context = CONTEXT_FACTORY.enter();
         CompilerEnvirons environs = new CompilerEnvirons();
         environs.initFromContext(context);
-        AstRoot root = new Parser(context, environs).parse(source, "kubex-async.js", 1);
-        visit(root, node -> {
-            if(node instanceof LabeledStatement label && label.getStatement() instanceof Loop loop) {
-                AstNode body = loop.getBody();
-                body.setPosition(body.getPosition() + label.getAbsolutePosition());
-            }
-        });
-        return root;
+        return new Parser(context, environs).parse(source, "kubex-async.js", 1);
     }
 
     private String arguments(String source, FunctionCall call) {
