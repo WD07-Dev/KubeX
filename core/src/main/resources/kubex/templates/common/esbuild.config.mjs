@@ -11,7 +11,32 @@ var externalPackages = [
     "@special/*"
 ];
 
-for (var group of groups) {
+function asyncSyntaxBridge({ types }) {
+    return {
+        visitor: {
+            Function(path) {
+                if(!path.node.async) return;
+
+                if(path.isArrowFunctionExpression()) {
+                    path.arrowFunctionToExpression();
+                }
+
+                path.node.async = false;
+                path.node.generator = true;
+                path.get("body").traverse({
+                    Function(innerPath) {
+                        innerPath.skip();
+                    },
+                    AwaitExpression(awaitPath) {
+                        awaitPath.replaceWith(types.yieldExpression(awaitPath.node.argument));
+                    }
+                });
+            }
+        }
+    };
+}
+
+for(var group of groups) {
     var entry;
 
     if (existsSync(`src/${group}/main.ts`)) {
@@ -58,6 +83,7 @@ for (var group of groups) {
                 }
             ]
         ],
+        plugins: [asyncSyntaxBridge],
         babelrc: false,
         configFile: false,
         sourceMaps: true

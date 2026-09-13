@@ -42,16 +42,16 @@ class ScriptCompilerTest {
     @Test
     void rewritesBundledPackageRequires() {
         String source = """
-            (function () {
-              var __require = function (x) {
-                if (typeof require !== "undefined") return require.apply(this, arguments);
-                throw Error('Dynamic require of "' + x + '" is not supported');
-              };
-              var import_item = __require("@package/net/minecraft/world/item");
-              var import_util = __require("@package/com/example/util");
-              import_item.$Items.APPLE.getDefaultInstance();
-              import_util.$PlayerExtensionsKt.party(player);
-            })();
+        (function () {
+          var __require = function (x) {
+            if (typeof require !== "undefined") return require.apply(this, arguments);
+            throw Error('Dynamic require of "' + x + '" is not supported');
+          };
+          var import_item = __require("@package/net/minecraft/world/item");
+          var import_util = __require("@package/com/example/util");
+          import_item.$Items.APPLE.getDefaultInstance();
+          import_util.$PlayerExtensionsKt.party(player);
+        })();
         """;
         String output = compiler.compile("server_scripts.js", source).outputSource();
 
@@ -64,10 +64,10 @@ class ScriptCompilerTest {
     @Test
     void rewritesPackageRequiresInsideArrayLiterals() {
         String source = """
-            (function () {
-              var import_stats = __require("@package/com/cobblemon/mod/common/api/pokemon/stats");
-              var STATS = [import_stats.$Stats.HP, import_stats.$Stats.ATTACK];
-            })();
+        (function () {
+          var import_stats = __require("@package/com/cobblemon/mod/common/api/pokemon/stats");
+          var STATS = [import_stats.$Stats.HP, import_stats.$Stats.ATTACK];
+        })();
         """;
         String output = compiler.compile("server_scripts.js", source).outputSource();
 
@@ -79,10 +79,10 @@ class ScriptCompilerTest {
     @Test
     void rewritesPackageRequiresInsideNestedMemberChains() {
         String source = """
-            (function () {
-              var import_util = __require("@package/com/cobblemon/mod/common/util");
-              var party = import_util.$PlayerExtensionsKt.party(player);
-            })();
+        (function () {
+          var import_util = __require("@package/com/cobblemon/mod/common/util");
+          var party = import_util.$PlayerExtensionsKt.party(player);
+        })();
         """;
         String output = compiler.compile("server_scripts.js", source).outputSource();
 
@@ -93,11 +93,11 @@ class ScriptCompilerTest {
     @Test
     void doesNotRewritePackageMarkersInsideStrings() {
         String source = """
-            (function () {
-              var import_util = __require("@package/com/cobblemon/mod/common/util");
-              var message = "import_util.$PlayerExtensionsKt should stay text";
-              return message;
-            })();
+        (function () {
+          var import_util = __require("@package/com/cobblemon/mod/common/util");
+          var message = "import_util.$PlayerExtensionsKt should stay text";
+          return message;
+        })();
         """;
         String output = compiler.compile("server_scripts.js", source).outputSource();
 
@@ -108,14 +108,14 @@ class ScriptCompilerTest {
     @Test
     void leavesNonPackageRequiresUntouched() {
         String source = """
-            (function () {
-              var __require = function (x) {
-                if (typeof require !== "undefined") return require.apply(this, arguments);
-                throw Error('Dynamic require of "' + x + '" is not supported');
-              };
-              var fs = __require("node:fs");
-              return fs.readFileSync(path);
-            })();
+        (function () {
+          var __require = function (x) {
+            if (typeof require !== "undefined") return require.apply(this, arguments);
+            throw Error('Dynamic require of "' + x + '" is not supported');
+          };
+          var fs = __require("node:fs");
+          return fs.readFileSync(path);
+        })();
         """;
         String output = compiler.compile("server_scripts.js", source).outputSource();
 
@@ -125,9 +125,9 @@ class ScriptCompilerTest {
     @Test
     void failsLoudlyWhenRhinoSyntaxCannotBeParsed() {
         String source = """
-            (function () {
-              var broken = ;
-            })();
+        (function () {
+          var broken = ;
+        })();
         """;
 
         IllegalStateException exception = assertThrows(
@@ -142,17 +142,17 @@ class ScriptCompilerTest {
     @Test
     void rewritesBabelLoopHelpersIntoPerIterationIifes() {
         String source = """
-            (function () {
-              var _loop = function _loop() {
-                var pokemon = partyPokemon[slot];
-                gui.button(slot + 1, 1, pokemon, function (click) {
-                  return pokemon.getDisplayName(true);
-                });
-              };
-              for (var slot = 0; slot < partyPokemon.length; slot++) {
-                _loop();
-              }
-            })();
+        (function () {
+          var _loop = function _loop() {
+            var pokemon = partyPokemon[slot];
+            gui.button(slot + 1, 1, pokemon, function (click) {
+              return pokemon.getDisplayName(true);
+            });
+          };
+          for (var slot = 0; slot < partyPokemon.length; slot++) {
+            _loop();
+          }
+        })();
         """;
         String output = compiler.compile("server_scripts.js", source).outputSource();
 
@@ -164,29 +164,58 @@ class ScriptCompilerTest {
     }
 
     @Test
+    void rewritesAsyncGeneratorsAndPromisesWithoutPromiseRuntime() {
+        String source = """
+        function* announce(event) {
+          event.server.tell("A");
+          yield wait(3);
+          event.server.tell("B");
+          return 7;
+        }
+        var ready = Promise.resolve(3);
+        var delayed = new Promise(function (resolve) {
+          resolve(4);
+        });
+        var combined = Promise.all([Promise.resolve(1), Promise.resolve(2)]);
+        """;
+
+        String output = compiler.compile("server_scripts.js", source).outputSource();
+
+        assertTrue(output.contains("function KubeXPromise"));
+        assertFalse(output.contains("__kubexRunGenerator"));
+        assertFalse(output.contains("function*"));
+        assertFalse(output.contains("yield wait(3)"));
+        assertTrue(output.contains("KubeXPromise.resolve(3)"));
+        assertTrue(output.contains("new KubeXPromise(function (resolve)"));
+        assertTrue(output.contains("KubeXPromise.all([KubeXPromise.resolve(1), KubeXPromise.resolve(2)])"));
+        assertFalse(output.contains("new Promise"));
+        assertFalse(output.contains("= Promise.resolve"));
+    }
+
+    @Test
     void rewritesNestedBabelLoopHelpersInsideCreateClassCallbacks() {
         String source = """
-            (function () {
-              return _createClass(ItemRelicGacha, null, [{
-                key: "openShinySelector",
-                value: function openShinySelector(player, item) {
-                  var partyPokemon = this.getPartyPokemon(player);
-                  if (!partyPokemon) return;
-                  player.openChestGUI("test", 3, function (gui) {
-                    gui.playerSlots = false;
-                    var _loop = function _loop() {
-                      var pokemon = partyPokemon[slot];
-                      gui.button(slot + 1, 1, pokemon, function (click) {
-                        return pokemon.getDisplayName(true);
-                      });
-                    };
-                    for (var slot = 0; slot < partyPokemon.length; slot++) {
-                      _loop();
-                    }
+        (function () {
+          return _createClass(ItemRelicGacha, null, [{
+            key: "openShinySelector",
+            value: function openShinySelector(player, item) {
+              var partyPokemon = this.getPartyPokemon(player);
+              if (!partyPokemon) return;
+              player.openChestGUI("test", 3, function (gui) {
+                gui.playerSlots = false;
+                var _loop = function _loop() {
+                  var pokemon = partyPokemon[slot];
+                  gui.button(slot + 1, 1, pokemon, function (click) {
+                    return pokemon.getDisplayName(true);
                   });
+                };
+                for (var slot = 0; slot < partyPokemon.length; slot++) {
+                  _loop();
                 }
-              }]);
-            })();
+              });
+            }
+          }]);
+        })();
         """;
         String output = compiler.compile("server_scripts.js", source).outputSource();
         String diagnostics = diagnostics(source, output);
@@ -202,11 +231,11 @@ class ScriptCompilerTest {
     @Test
     void wrapsCallbackFunctionsInDebugMode() {
         String source = """
-            (function () {
-              gui.button(1, 1, item, function (click) {
-                player.tell("ok");
-              });
-            })();
+        (function () {
+          gui.button(1, 1, item, function (click) {
+            player.tell("ok");
+          });
+        })();
         """;
         String output = compiler.compile("server_scripts.js", source, new CompileOptions(true, null)).outputSource();
 
@@ -219,15 +248,15 @@ class ScriptCompilerTest {
     @Test
     void skipsWrappingCallbacksThatAlreadyHaveTryCatch() {
         String source = """
-            (function () {
-              gui.button(1, 1, item, function (click) {
-                try {
-                  player.tell("ok");
-                } catch (e) {
-                  player.tell(String(e));
-                }
-              });
-            })();
+        (function () {
+          gui.button(1, 1, item, function (click) {
+            try {
+              player.tell("ok");
+            } catch (e) {
+              player.tell(String(e));
+            }
+          });
+        })();
         """;
         String output = compiler.compile("server_scripts.js", source, new CompileOptions(true, null)).outputSource();
 
@@ -238,11 +267,11 @@ class ScriptCompilerTest {
     @Test
     void tracksGeneratedLinesBackToOriginalOutputLines() {
         String source = """
-            (function () {
-              gui.button(1, 1, item, function (click) {
-                player.tell("ok");
-              });
-            })();
+        (function () {
+          gui.button(1, 1, item, function (click) {
+            player.tell("ok");
+          });
+        })();
         """;
         CompileResult result = compiler.compile("server_scripts.js", source, new CompileOptions(true, null));
         List<String> originalLines = Arrays.asList(source.replace("\r\n", "\n").split("\n", -1));
@@ -292,11 +321,11 @@ class ScriptCompilerTest {
         if(node == null || !visited.add(node)) return;
 
         indent(builder, depth)
-            .append(node.getClass().getSimpleName())
-            .append(" @")
-            .append(node.getAbsolutePosition())
-            .append(':')
-            .append(node.getLength());
+        .append(node.getClass().getSimpleName())
+        .append(" @")
+        .append(node.getAbsolutePosition())
+        .append(':')
+        .append(node.getLength());
 
         if(node instanceof FunctionNode functionNode) {
             builder.append(" fn=").append(functionNode.getName());

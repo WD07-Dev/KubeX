@@ -1,6 +1,7 @@
 package com.ourgram.kubex.compiler;
 
 import com.ourgram.kubex.compiler.helper.CompilerHelper;
+import com.ourgram.kubex.compiler.helper.AsyncRewriter;
 import com.ourgram.kubex.compiler.helper.LoopRewriter;
 import com.ourgram.kubex.sourcemap.SourceMapService;
 import dev.latvian.mods.rhino.CompilerEnvirons;
@@ -38,9 +39,11 @@ public final class ScriptCompiler {
     private record SourceLocation(String file, int line, int column) {}
 
     private static final List<CompilerHelper> HELPERS = List.of(
+        new AsyncRewriter(),
         new LoopRewriter()
     );
     private static final String BANNER = loadResource("kubex/compiler/banner.js");
+    private static final String ASYNC_RUNTIME = loadResource("kubex/compiler/kubex-promise.js");
     private static final String DEBUG_HELPER = loadResource("kubex/compiler/debug-helper.js");
     private static final String JAVA_LOAD_CLASS = loadResource("kubex/compiler/java-load-class.js");
     private static final String DEBUG_TRY_PREFIX = "\n  try {";
@@ -83,6 +86,9 @@ public final class ScriptCompiler {
 
         String firstPass = applyEdits(source, firstPassEdits);
         firstPass = applyHelpers(firstPass);
+        if(firstPass.contains("KubeXPromise") || firstPass.contains("__kubexAwait")) {
+            firstPass = ASYNC_RUNTIME + "\n" + firstPass;
+        }
         AstRoot secondPassRoot = parseScript(firstPass);
         String secondPass = applyEdits(firstPass, collectPackageMemberAccessEdits(secondPassRoot, packageAliases));
         secondPass = rewriteRemainingPackageMemberAccesses(secondPass, packageAliases);

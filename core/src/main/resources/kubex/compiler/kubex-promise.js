@@ -1,0 +1,223 @@
+function KubeXPromise(executor) {
+    var self = this;
+    var state = 0;
+    var value;
+    var handlers = [];
+    var claimed = false;
+
+    function resolve(nextValue) {
+        if(state !== 0) return;
+        if(nextValue === self) {
+            reject(new Error("KubeXPromise cannot resolve itself"));
+            return;
+        }
+        if(nextValue && (typeof nextValue === "object" || typeof nextValue === "function")) {
+            var then;
+            try {
+                then = nextValue.then;
+            } catch(error) {
+                reject(error);
+                return;
+            }
+            if(typeof then === "function") {
+                var called = false;
+                try {
+                    then.call(nextValue, function (result) {
+                        if(called) return;
+                        called = true;
+                        resolve(result);
+                    }, function (error) {
+                        if(called) return;
+                        called = true;
+                        reject(error);
+                    });
+                } catch(error) {
+                    if(!called) reject(error);
+                }
+                return;
+            }
+        }
+        state = 1;
+        value = nextValue;
+        flush();
+    }
+
+    function reject(error) {
+        if(state !== 0) return;
+        state = 2;
+        value = error;
+        flush();
+    }
+
+    function flush() {
+        var list = handlers.slice();
+        handlers.length = 0;
+        for(var index = 0; index < list.length; index++) {
+            list[index](state, value);
+        }
+    }
+
+    this.__kxThen = function (handler) {
+        if(state === 0) handlers.push(handler);
+        else handler(state, value);
+    };
+
+    this.then = function (onFulfilled, onRejected) {
+        return new KubeXPromise(function (resolve, reject) {
+            self.__kxThen(function (nextState, nextValue) {
+                try {
+                    if(nextState === 1) {
+                        if(typeof onFulfilled !== "function") {
+                            resolve(nextValue);
+                            return;
+                        }
+                        resolve(onFulfilled(nextValue));
+                        return;
+                    }
+                    if(typeof onRejected !== "function") {
+                        reject(nextValue);
+                        return;
+                    }
+                    resolve(onRejected(nextValue));
+                } catch(error) {
+                    reject(error);
+                }
+            });
+        });
+    };
+
+    this.catch = function (onRejected) {
+        return self.then(undefined, onRejected);
+    };
+
+    this.finally = function (onFinally) {
+        var runFinally = typeof onFinally === "function" ? onFinally : function () {};
+        return self.then(function (nextValue) {
+            return KubeXPromise.resolve(runFinally()).then(function () {
+                return nextValue;
+            });
+        }, function (error) {
+            return KubeXPromise.resolve(runFinally()).then(function () {
+                return KubeXPromise.reject(error);
+            });
+        });
+    };
+
+    try {
+        executor(function(value) {
+            if(claimed) return;
+            claimed = true;
+            resolve(value);
+        }, function(error) {
+            if(claimed) return;
+            claimed = true;
+            reject(error);
+        });
+    } catch(error) {
+        if(!claimed) {
+            claimed = true;
+            reject(error);
+        }
+    }
+}
+
+KubeXPromise.resolve = function (value) {
+    return new KubeXPromise(function (resolve) {
+        resolve(value);
+    });
+};
+
+KubeXPromise.reject = function (error) {
+    return new KubeXPromise(function (resolve, reject) {
+        reject(error);
+    });
+};
+
+KubeXPromise.all = function (values) {
+    return new KubeXPromise(function (resolve, reject) {
+        var results = [];
+        var remaining = values.length;
+        if(remaining === 0) {
+            resolve(results);
+            return;
+        }
+        for(var index = 0; index < values.length; index++) {
+            (function (slot) {
+                __kubexAwait(values[slot], function (result) {
+                    results[slot] = result;
+                    remaining--;
+                    if(remaining === 0) resolve(results);
+                }, reject);
+            })(index);
+        }
+    });
+};
+
+KubeXPromise.race = function (values) {
+    return new KubeXPromise(function (resolve, reject) {
+        for(var index = 0; index < values.length; index++) {
+            __kubexAwait(values[index], resolve, reject);
+        }
+    });
+};
+
+KubeXPromise.allSettled = function (values) {
+    return new KubeXPromise(function (resolve) {
+        var results = [];
+        var remaining = values.length;
+        if(remaining === 0) {
+            resolve(results);
+            return;
+        }
+        for(var index = 0; index < values.length; index++) {
+            (function (slot) {
+                __kubexAwait(values[slot], function (result) {
+                    results[slot] = { status: "fulfilled", value: result };
+                    remaining--;
+                    if(remaining === 0) resolve(results);
+                }, function (error) {
+                    results[slot] = { status: "rejected", reason: error };
+                    remaining--;
+                    if(remaining === 0) resolve(results);
+                });
+            })(index);
+        }
+    });
+};
+
+KubeXPromise.any = function (values) {
+    return new KubeXPromise(function (resolve, reject) {
+        var errors = [];
+        var remaining = values.length;
+        if(remaining === 0) {
+            reject(new Error("All promises were rejected"));
+            return;
+        }
+        for(var index = 0; index < values.length; index++) {
+            (function (slot) {
+                __kubexAwait(values[slot], resolve, function (error) {
+                    errors[slot] = error;
+                    remaining--;
+                    if(remaining === 0) {
+                        var aggregate = new Error("All promises were rejected");
+                        aggregate.errors = errors;
+                        reject(aggregate);
+                    }
+                });
+            })(index);
+        }
+    });
+};
+
+var __kubexAwait = function (value, success, error) {
+    try {
+        KubeXPromise.resolve(value).__kxThen(function (state, result) {
+            if(state === 1) success(result);
+            else if(error) error(result);
+            else throw result;
+        });
+    } catch(exception) {
+        if(error) error(exception);
+        else throw exception;
+    }
+};
