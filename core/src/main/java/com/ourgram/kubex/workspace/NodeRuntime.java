@@ -117,8 +117,7 @@ public final class NodeRuntime {
     }
 
     private static int probe(ProcessBuilder builder) throws IOException {
-        Process process = builder.redirectOutput(ProcessBuilder.Redirect.DISCARD)
-            .redirectError(ProcessBuilder.Redirect.DISCARD).start();
+        Process process = builder.redirectOutput(ProcessBuilder.Redirect.DISCARD).redirectError(ProcessBuilder.Redirect.DISCARD).start();
         try {
             return process.waitFor(3, TimeUnit.SECONDS) ? process.exitValue() : -1;
         } catch(InterruptedException exception) {
