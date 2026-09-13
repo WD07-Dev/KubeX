@@ -2,6 +2,9 @@ plugins {
     id 'java-library'
 }
 
+org.apache.tools.ant.DirectoryScanner.defaultExcludes.findAll { it.startsWith('**/.') }
+.each { org.apache.tools.ant.DirectoryScanner.removeDefaultExclude(it) }
+
 base {
     archivesName = "${core_archives_base_name}"
 }

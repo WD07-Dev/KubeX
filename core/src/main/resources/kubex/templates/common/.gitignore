@@ -1,5 +1,6 @@
 .probe
 .vscode
 .debug-mode
+.kubex-status.json
 node_modules
 output

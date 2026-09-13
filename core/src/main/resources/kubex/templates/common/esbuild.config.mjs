@@ -50,7 +50,11 @@ for (var group of groups) {
                     targets: {
                         ie: "11"
                     },
-                    modules: false
+                    modules: false,
+                    exclude: [
+                        "@babel/plugin-transform-async-to-generator",
+                        "@babel/plugin-transform-regenerator"
+                    ]
                 }
             ]
         ],
