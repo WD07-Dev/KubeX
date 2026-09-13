@@ -31,6 +31,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Consumer;
+import java.lang.reflect.Method;
 
 public final class ScriptCompiler {
     private record PackageAlias(String alias, String packageName) {}
@@ -95,7 +96,7 @@ public final class ScriptCompiler {
 
         if(options.debugEnabled()) {
             AstRoot thirdPassRoot = parseScript(secondPass);
-            List<Edit> debugEdits = collectDebugWrapEdits(thirdPassRoot, secondPass, fileName, options.sourceMapContent());
+            List<Edit> debugEdits = collectDebugWrapEdits(thirdPassRoot, secondPass, fileName, options.sourceMapContent(), buildGeneratedToOriginalLineMap(source, secondPass));
             if(!debugEdits.isEmpty()) {
                 transformed = prependDebugHelper(applyEdits(secondPass, debugEdits));
             }
@@ -196,29 +197,18 @@ public final class ScriptCompiler {
     }
 
     private PackageAlias extractPackageAlias(AstNode statement) {
-        if(!(statement instanceof VariableDeclaration declaration) || declaration.getVariables().size() != 1) {
-            return null;
-        }
+        if(!(statement instanceof VariableDeclaration declaration) || declaration.getVariables().size() != 1) return null;
 
         VariableInitializer initializer = declaration.getVariables().get(0);
-        if(!(initializer.getTarget() instanceof Name aliasName)) {
-            return null;
-        }
-
-        if(!(initializer.getInitializer() instanceof FunctionCall call)) {
-            return null;
-        }
-
+        if(!(initializer.getTarget() instanceof Name aliasName)) return null;
+        if(!(initializer.getInitializer() instanceof FunctionCall call)) return null;
         if(!(call.getTarget() instanceof Name target) || !"__require".equals(target.getIdentifier()) || call.getArguments().size() != 1) {
             return null;
         }
 
         AstNode argument = call.getArguments().get(0);
         String packageId = extractStringValue(argument);
-        if(packageId == null || !packageId.startsWith("@package/")) {
-            return null;
-        }
-
+        if(packageId == null || !packageId.startsWith("@package/")) return null;
         return new PackageAlias(
             aliasName.getIdentifier(),
             packageId.substring("@package/".length()).replace('/', '.')
@@ -250,21 +240,16 @@ public final class ScriptCompiler {
 
         VariableInitializer initializer = declaration.getVariables().get(0);
         return initializer.getTarget() instanceof Name name
-        && "__require".equals(name.getIdentifier())
-        && initializer.getInitializer() instanceof FunctionNode;
+        && "__require".equals(name.getIdentifier()) && initializer.getInitializer() instanceof FunctionNode;
     }
 
     private List<Edit> collectPackageMemberAccessEdits(AstRoot root, Map<String, String> packageAliases) {
         List<Edit> edits = new ArrayList<>();
         visitAst(root, node -> {
-            if(!(node instanceof PropertyGet propertyGet) || !(propertyGet.getTarget() instanceof Name targetName)) {
-                return;
-            }
+            if(!(node instanceof PropertyGet propertyGet) || !(propertyGet.getTarget() instanceof Name targetName)) return;
 
             String packageName = packageAliases.get(targetName.getIdentifier());
-            if(packageName == null) {
-                return;
-            }
+            if(packageName == null) return;
 
             String className = propertyGet.getProperty().getIdentifier();
             if(!className.startsWith("$")) {
@@ -281,7 +266,7 @@ public final class ScriptCompiler {
         return edits;
     }
 
-    private List<Edit> collectDebugWrapEdits(AstRoot root, String source, String fileName, String sourceMapContent) {
+    private List<Edit> collectDebugWrapEdits(AstRoot root, String source, String fileName, String sourceMapContent, int[] originalLines) {
         List<Edit> edits = new ArrayList<>();
         visitAst(root, node -> {
             if(!(node instanceof FunctionNode functionNode) || !isCallbackFunction(functionNode) || hasTopLevelTryCatch(functionNode)) {
@@ -289,11 +274,9 @@ public final class ScriptCompiler {
             }
 
             AstNode body = functionNode.getBody();
-            if(body == null || body.getLength() < 2 || !isBlockBody(source, body)) {
-                return;
-            }
+            if(body == null || body.getLength() < 2 || !isBlockBody(source, body)) return;
 
-            SourceLocation location = resolveSourceLocation(fileName, sourceMapContent, source, functionNode);
+            SourceLocation location = resolveSourceLocation(fileName, sourceMapContent, source, functionNode, originalLines);
             edits.add(insertAt(body.getAbsolutePosition() + 1, DEBUG_TRY_PREFIX));
             edits.add(insertAt(
                 body.getAbsolutePosition() + body.getLength() - 1,
@@ -317,14 +300,9 @@ public final class ScriptCompiler {
             parent = parent.getParent();
         }
 
-        if(!(parent instanceof FunctionCall call)) {
-            return false;
-        }
-
+        if(!(parent instanceof FunctionCall call)) return false;
         for(AstNode argument : call.getArguments()) {
-            if(argument == current) {
-                return true;
-            }
+            if(argument == current) return true;
         }
         return false;
     }
@@ -343,13 +321,14 @@ public final class ScriptCompiler {
         return false;
     }
 
-    private SourceLocation resolveSourceLocation(String fileName, String sourceMapContent, String source, FunctionNode functionNode) {
+    private SourceLocation resolveSourceLocation(String fileName, String sourceMapContent, String source, FunctionNode functionNode, int[] originalLines) {
         LineColumn generated = lineColumnAt(source, firstMeaningfulPosition(source, functionNode.getBody()));
+        int originalLine = generated.line() <= originalLines.length ? originalLines[generated.line() - 1] : generated.line();
         if(sourceMapContent != null && !sourceMapContent.isBlank()) {
             try {
                 SourceMapService.ResolvedSourcePosition resolved = SourceMapService.lookupSource(
                     sourceMapContent,
-                    generated.line(),
+                    originalLine,
                     generated.column()
                 );
                 if(resolved != null) {
@@ -395,10 +374,10 @@ public final class ScriptCompiler {
     private String normalizeSourcePath(String sourcePath) {
         String normalized = sourcePath.replace('\\', '/');
         if(normalized.startsWith("../src/")) {
-            return normalized.substring("../src/".length());
+            return "kubex/src/" + normalized.substring("../src/".length());
         }
         if(normalized.startsWith("src/")) {
-            return normalized.substring("src/".length());
+            return "kubex/" + normalized;
         }
         return normalized;
     }
@@ -417,7 +396,7 @@ public final class ScriptCompiler {
 
     private String extractStringValue(AstNode node) {
         try {
-            java.lang.reflect.Method method = node.getClass().getMethod("getValue");
+            Method method = node.getClass().getMethod("getValue");
             Object value = method.invoke(node);
             return value instanceof String string ? string : null;
         } catch (ReflectiveOperationException ignored) {
@@ -576,10 +555,7 @@ public final class ScriptCompiler {
     }
 
     private String applyEdits(String source, List<Edit> edits) {
-        if(edits.isEmpty()) {
-            return source;
-        }
-
+        if(edits.isEmpty()) return source;
         List<Edit> ordered = new ArrayList<>(edits);
         ordered.sort(Comparator.comparingInt(Edit::start).reversed());
         StringBuilder builder = new StringBuilder(source);
@@ -606,7 +582,7 @@ public final class ScriptCompiler {
 
         for(String name : AST_CHILD_GETTERS) {
             try {
-                java.lang.reflect.Method method = node.getClass().getMethod(name);
+                Method method = node.getClass().getMethod(name);
                 if(method.getParameterCount() != 0) continue;
 
                 Object value = method.invoke(node);
@@ -646,6 +622,15 @@ public final class ScriptCompiler {
         int generatedIndex = 0;
         int lastMappedOriginal = 1;
         int lookAhead = 24;
+
+        if(generatedSource.contains("function KubeXPromise(executor) {")) {
+            for(int index = 0; index < generatedLines.size(); index++) {
+                if(generatedLines.get(index).startsWith("var __kubexPromiseRuntimeEnd = ")) {
+                    while(generatedIndex <= index) lineMap[generatedIndex++] = 1;
+                    break;
+                }
+            }
+        }
 
         while(generatedIndex < generatedLines.size()) {
             if(originalIndex < originalLines.size() && sameLine(originalLines.get(originalIndex), generatedLines.get(generatedIndex))) {
@@ -742,8 +727,7 @@ public final class ScriptCompiler {
             .append(rhinoException.details());
             
             if(rhinoException.lineNumber() > 0) {
-                message.append(" at ")
-                .append(rhinoException.lineNumber()).append(':')
+                message.append(" at ").append(rhinoException.lineNumber()).append(':')
                 .append(Math.max(1, rhinoException.columnNumber()));
             }
 
