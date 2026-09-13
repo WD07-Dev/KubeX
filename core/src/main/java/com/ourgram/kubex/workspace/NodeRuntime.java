@@ -1,6 +1,7 @@
 package com.ourgram.kubex.workspace;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Comparator;
@@ -9,6 +10,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
 
 public final class NodeRuntime {
@@ -18,9 +20,7 @@ public final class NodeRuntime {
             String pathKey = pathKey(environment);
             String previousPath = environment.getOrDefault(pathKey, "");
             String directories = binDirectories.stream()
-            .map(Path::toString)
-            .reduce((left, right) -> left + java.io.File.pathSeparator + right)
-            .orElse("");
+            .map(Path::toString).reduce((left, right) -> left + java.io.File.pathSeparator + right).orElse("");
 
             if(!directories.isBlank()) {
                 environment.put(pathKey, previousPath.isBlank() ? directories : directories + java.io.File.pathSeparator + previousPath);
@@ -63,7 +63,51 @@ public final class NodeRuntime {
             }
         }
 
+        Path shellCommand = findWithShell(executable);
+        if(shellCommand != null) {
+            directories.add(shellCommand.getParent());
+            return new Command(shellCommand.toString(), List.copyOf(directories));
+        }
+
         return new Command(executable, List.copyOf(directories));
+    }
+
+    private static Path findWithShell(String executable) {
+        List<String> command = isWindows() ? List.of("where.exe", executable)
+        : List.of("sh", "-lc", "NVM_DIR=\"${NVM_DIR:-$HOME/.nvm}\"; [ -s \"$NVM_DIR/nvm.sh\" ] && . \"$NVM_DIR/nvm.sh\" >/dev/null 2>&1; command -v " + executable);
+
+        try {
+            Process process = new ProcessBuilder(command).redirectErrorStream(true).start();
+            if(!process.waitFor(3, TimeUnit.SECONDS)) {
+                process.destroyForcibly();
+                return null;
+            }
+
+            for(String line : new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8).lines().toList()) {
+                Path candidate = parseExecutablePath(line);
+                if(candidate != null) return candidate;
+            }
+        } catch(IOException exception) {
+            return null;
+        } catch(InterruptedException exception) {
+            Thread.currentThread().interrupt();
+        }
+        return null;
+    }
+
+    private static Path parseExecutablePath(String value) {
+        String path = value.trim();
+        if(path.length() >= 2 && path.startsWith("\"") && path.endsWith("\"")) {
+            path = path.substring(1, path.length() - 1);
+        }
+        if(path.isBlank()) return null;
+
+        try {
+            Path candidate = Path.of(path);
+            return Files.isRegularFile(candidate) && Files.isExecutable(candidate) ? candidate : null;
+        } catch(RuntimeException ignored) {
+            return null;
+        }
     }
 
     private static void addEnvironmentDirectory(Set<Path> directories, String variable, String... children) {
