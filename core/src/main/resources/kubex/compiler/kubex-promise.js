@@ -4,6 +4,8 @@ function KubeXPromise(executor) {
     var value;
     var handlers = [];
     var claimed = false;
+    var handled = false;
+    var rejection;
 
     function resolve(nextValue) {
         if(state !== 0) return;
@@ -47,6 +49,7 @@ function KubeXPromise(executor) {
         state = 2;
         value = error;
         flush();
+        if(!handled) rejection = __kubexTrackRejection(error, new Error());
     }
 
     function flush() {
@@ -58,6 +61,8 @@ function KubeXPromise(executor) {
     }
 
     this.__kxThen = function (handler) {
+        handled = true;
+        if(rejection) rejection.cancel();
         if(state === 0) handlers.push(handler);
         else handler(state, value);
     };
@@ -119,6 +124,48 @@ function KubeXPromise(executor) {
             reject(error);
         }
     }
+}
+
+var __kubexPromiseBridge;
+var __kubexPromiseBridgeChecked = false;
+
+function __kubexTrackRejection(error, origin) {
+    try {
+        if(typeof Java === "undefined") return null;
+        if(!__kubexPromiseBridgeChecked) {
+            __kubexPromiseBridgeChecked = true;
+            // Exported scripts can run without the KubeX mod installed.
+            try {
+                __kubexPromiseBridge = Java.loadClass("com.ourgram.kubex.runtime.RuntimeBridge");
+            } catch(unavailable) {}
+        }
+        if(!__kubexPromiseBridge) return null;
+        if(typeof Error.captureStackTrace === "function") Error.captureStackTrace(origin);
+        var stack = error && error.stack ? String(error.stack) : String(origin.stack || "");
+        var frames = /main\.js:(\d+)(?::(\d+))?/g;
+        var frame, line = 0, column = 1;
+        while((frame = frames.exec(stack))) {
+            if(Number(frame[1]) <= __kubexPromiseRuntimeEnd) continue;
+            line = Number(frame[1]);
+            column = frame[2] ? Number(frame[2]) : 1;
+            break;
+        }
+        return __kubexPromiseBridge.trackUnhandled(String(error), "${promiseScriptGroup}", line, column);
+    } catch(reportError) {
+        if(typeof console !== "undefined" && console.error) {
+            console.error("[KubeX] Promise rejection tracking failed: " + String(reportError));
+        }
+        return null;
+    }
+}
+
+function __kubexCaptureError(error) {
+    try {
+        if(error && typeof error === "object" && !error.stack && typeof Error.captureStackTrace === "function") {
+            Error.captureStackTrace(error);
+        }
+    } catch(ignored) {}
+    return error;
 }
 
 KubeXPromise.resolve = function (value) {
@@ -221,3 +268,4 @@ var __kubexAwait = function (value, success, error) {
         else throw exception;
     }
 };
+var __kubexPromiseRuntimeEnd = 0;

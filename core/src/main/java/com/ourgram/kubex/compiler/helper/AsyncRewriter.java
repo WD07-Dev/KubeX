@@ -184,9 +184,11 @@ public final class AsyncRewriter implements CompilerHelper {
                 return "return " + expression(yielded.getValue()) + ".then(function(" + value + ") { "
                 + next.apply(value) + " }.bind(this));";
             }
-            if(node instanceof ConditionalExpression choice) return capture(choice.getTestExpression(), test ->
-                "if(" + test + ") { " + lower(choice.getTrueExpression(), next) + " } else { "
-                    + lower(choice.getFalseExpression(), next) + " }");
+            if(node instanceof ConditionalExpression choice) return capture(
+                choice.getTestExpression(),
+                test -> "if(" + test + ") { " + lower(choice.getTrueExpression(), next) + " } else { "
+                + lower(choice.getFalseExpression(), next) + " }"
+            );
             if(node instanceof PropertyGet || node instanceof ElementGet) return reference(node, next);
             if(node instanceof Assignment assignment) return reference(assignment.getLeft(), target -> {
                 String operator = operator(assignment.getOperator());
@@ -418,7 +420,7 @@ public final class AsyncRewriter implements CompilerHelper {
                 }
                 return "return " + chain + ";";
             }
-            if(node instanceof ThrowStatement thrown) return lower(thrown.getExpression(), value -> "throw " + value + ";");
+            if(node instanceof ThrowStatement thrown) return lower(thrown.getExpression(), value -> "throw __kubexCaptureError(" + value + ");");
             if(node instanceof dev.latvian.mods.rhino.ast.EmptyExpression || node instanceof dev.latvian.mods.rhino.ast.EmptyStatement) return "";
             throw unsupported(node, node.getClass().getSimpleName());
         }

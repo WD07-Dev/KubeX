@@ -4,6 +4,8 @@ import com.ourgram.kubex.KubeXCore;
 import com.ourgram.kubex.command.CommandService;
 import com.ourgram.kubex.neoforge.cmd.CommandRegistry;
 import com.ourgram.kubex.neoforge.cmd.ReloadBridge;
+import com.ourgram.kubex.runtime.RuntimeBridge;
+import net.neoforged.fml.loading.FMLPaths;
 import com.ourgram.kubex.neoforge.config.Config;
 import com.ourgram.kubex.sourcemap.SourceMapService;
 import com.ourgram.kubex.workspace.DebugMode;
@@ -15,6 +17,8 @@ import net.neoforged.neoforge.client.event.RegisterClientCommandsEvent;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.RegisterCommandsEvent;
 import net.neoforged.neoforge.event.server.ServerStartedEvent;
+import net.neoforged.neoforge.client.event.ClientTickEvent;
+import net.neoforged.neoforge.event.tick.ServerTickEvent;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -29,6 +33,7 @@ public final class Main {
 
     public Main(ModContainer modContainer) {
         MOD_CONTAINER = modContainer;
+        RuntimeBridge.initialize(FMLPaths.GAMEDIR.get());
         modContainer.registerConfig(ModConfig.Type.COMMON, Config.SPEC);
         DebugMode debugMode = new DebugMode();
         this.workspace = new Workspace(debugMode);
@@ -41,6 +46,8 @@ public final class Main {
         NeoForge.EVENT_BUS.addListener(this::registerCommands);
         NeoForge.EVENT_BUS.addListener(this::registerClientCommands);
         NeoForge.EVENT_BUS.addListener(this::onServerStarted);
+        NeoForge.EVENT_BUS.addListener((ClientTickEvent.Post event) -> RuntimeBridge.tickClient(LOGGER::error));
+        NeoForge.EVENT_BUS.addListener((ServerTickEvent.Post event) -> RuntimeBridge.tickServer(LOGGER::error));
         LOGGER.info("KubeX NeoForge mod initialized.");
     }
 

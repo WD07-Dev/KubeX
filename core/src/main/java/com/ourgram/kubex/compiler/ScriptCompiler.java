@@ -47,11 +47,10 @@ public final class ScriptCompiler {
     private static final String DEBUG_HELPER = loadResource("kubex/compiler/debug-helper.js");
     private static final String JAVA_LOAD_CLASS = loadResource("kubex/compiler/java-load-class.js");
     private static final String DEBUG_TRY_PREFIX = "\n  try {";
-    private static final String DEBUG_CATCH_SUFFIX =
-        "\n  } catch (e) {\n"
-            + "    __kubexReport(e, { scriptGroup: \"${scriptGroup}\", file: \"${file}\", line: ${line}, column: ${column} });\n"
-            + "    throw e;\n"
-            + "  }\n";
+    private static final String DEBUG_CATCH_SUFFIX = "\n  } catch (e) {\n"
+    + "    __kubexReport(e, { scriptGroup: \"${scriptGroup}\", file: \"${file}\", line: ${line}, column: ${column} });\n"
+    + "    throw e;\n"
+    + "  }\n";
     private static final String SOURCE_NAME = "kubex-sync.js";
     private static final List<String> AST_CHILD_GETTERS = List.of(
         "getExpression",
@@ -87,7 +86,7 @@ public final class ScriptCompiler {
         String firstPass = applyEdits(source, firstPassEdits);
         firstPass = applyHelpers(firstPass);
         if(firstPass.contains("KubeXPromise") || firstPass.contains("__kubexAwait")) {
-            firstPass = ASYNC_RUNTIME + "\n" + firstPass;
+            firstPass = ASYNC_RUNTIME.replace("${promiseScriptGroup}", escapeJs(scriptGroupFor(fileName))) + "\n" + firstPass;
         }
         AstRoot secondPassRoot = parseScript(firstPass);
         String secondPass = applyEdits(firstPass, collectPackageMemberAccessEdits(secondPassRoot, packageAliases));
@@ -103,6 +102,14 @@ public final class ScriptCompiler {
         }
 
         transformed = prependBanner(transformed);
+        String runtimeEnd = "var __kubexPromiseRuntimeEnd = 0;";
+        int runtimeEndPosition = transformed.indexOf(runtimeEnd);
+        if(runtimeEndPosition >= 0) {
+            long runtimeEndLine = transformed.substring(0, runtimeEndPosition).chars().filter(character -> character == '\n').count() + 1;
+            transformed = transformed.substring(0, runtimeEndPosition)
+            + "var __kubexPromiseRuntimeEnd = " + runtimeEndLine + ";"
+            + transformed.substring(runtimeEndPosition + runtimeEnd.length());
+        }
         validateRhino(transformed);
         return new CompileResult(fileName, source, transformed, buildGeneratedToOriginalLineMap(source, transformed));
     }
