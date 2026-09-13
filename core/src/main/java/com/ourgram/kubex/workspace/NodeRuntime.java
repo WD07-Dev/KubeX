@@ -1,10 +1,12 @@
 package com.ourgram.kubex.workspace;
 
 import java.io.IOException;
+import java.io.File;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Comparator;
+import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -12,18 +14,29 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
+import java.util.regex.Pattern;
 
 public final class NodeRuntime {
-    public record Command(String executable, List<Path> binDirectories) {
-        public void configure(ProcessBuilder processBuilder) {
+    public record Command(String executable, List<Path> binDirectories, boolean flatpakHost) {
+        public Command(String executable, List<Path> binDirectories) {
+            this(executable, binDirectories, false);
+        }
+
+        public void configure(ProcessBuilder processBuilder) throws IOException {
+            if(flatpakHost) {
+                Path directory = processBuilder.directory() == null ? null : processBuilder.directory().toPath();
+                verifyHost(executable, directory);
+                processBuilder.command(hostCommand(processBuilder.command(), directory));
+                return;
+            }
             Map<String, String> environment = processBuilder.environment();
             String pathKey = pathKey(environment);
             String previousPath = environment.getOrDefault(pathKey, "");
             String directories = binDirectories.stream()
-            .map(Path::toString).reduce((left, right) -> left + java.io.File.pathSeparator + right).orElse("");
+            .map(Path::toString).reduce((left, right) -> left + File.pathSeparator + right).orElse("");
 
             if(!directories.isBlank()) {
-                environment.put(pathKey, previousPath.isBlank() ? directories : directories + java.io.File.pathSeparator + previousPath);
+                environment.put(pathKey, previousPath.isBlank() ? directories : directories + File.pathSeparator + previousPath);
             }
         }
 
@@ -46,6 +59,7 @@ public final class NodeRuntime {
     }
 
     private static Command find(String executable) {
+        boolean flatpak = isLinux() && (Files.exists(Path.of("/.flatpak-info")) || System.getenv("FLATPAK_ID") != null);
         Set<Path> directories = new LinkedHashSet<>();
         addEnvironmentDirectory(directories, "NVM_BIN");
         addEnvironmentDirectory(directories, "FNM_MULTISHELL_PATH");
@@ -59,17 +73,60 @@ public final class NodeRuntime {
         for(Path directory : directories) {
             Path command = directory.resolve(executable);
             if(Files.isRegularFile(command) && Files.isExecutable(command)) {
-                return new Command(command.toString(), List.copyOf(directories));
+                Command candidate = new Command(command.toString(), List.copyOf(directories));
+                if(!flatpak || canRun(candidate)) return candidate;
             }
         }
 
         Path shellCommand = findWithShell(executable);
         if(shellCommand != null) {
             directories.add(shellCommand.getParent());
-            return new Command(shellCommand.toString(), List.copyOf(directories));
+            Command candidate = new Command(shellCommand.toString(), List.copyOf(directories));
+            if(!flatpak || canRun(candidate)) return candidate;
         }
 
-        return new Command(executable, List.copyOf(directories));
+        return new Command(executable, List.copyOf(directories), flatpak);
+    }
+
+    static List<String> hostCommand(List<String> arguments, Path directory) {
+        List<String> command = new ArrayList<>(List.of("flatpak-spawn", "--host", "--watch-bus"));
+        if(directory != null) command.add("--directory=" + directory.toAbsolutePath().normalize());
+        command.addAll(arguments);
+        return command;
+    }
+
+    private static boolean canRun(Command command) {
+        try {
+            ProcessBuilder builder = new ProcessBuilder(command.executable(), "--version");
+            command.configure(builder);
+            return probe(builder) == 0;
+        } catch(IOException ignored) {
+            return false;
+        }
+    }
+
+    private static void verifyHost(String executable, Path directory) throws IOException {
+        int status;
+        try {
+            status = probe(new ProcessBuilder(hostCommand(List.of(executable, "--version"), directory)));
+        } catch(IOException exception) {
+            throw new IOException("Flatpak host execution is unavailable. Check flatpak-spawn and the launcher runtime, or use a non-Flatpak launcher.", exception);
+        }
+        if(status == 127) throw new IOException("Node.js/npm was not found in the host PATH. Install Node.js and npm on the host.");
+        if(status != 0) throw new IOException("Could not run Node.js/npm from the host PATH. Check installation and PATH, the launcher's org.freedesktop.Flatpak D-Bus permission, and host access to the workspace directory.");
+    }
+
+    private static int probe(ProcessBuilder builder) throws IOException {
+        Process process = builder.redirectOutput(ProcessBuilder.Redirect.DISCARD)
+            .redirectError(ProcessBuilder.Redirect.DISCARD).start();
+        try {
+            return process.waitFor(3, TimeUnit.SECONDS) ? process.exitValue() : -1;
+        } catch(InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw new IOException("Node.js detection interrupted", exception);
+        } finally {
+            if(process.isAlive()) process.destroyForcibly();
+        }
     }
 
     private static Path findWithShell(String executable) {
@@ -127,7 +184,7 @@ public final class NodeRuntime {
     private static void addPathDirectories(Set<Path> directories, String path) {
         if(path == null || path.isBlank()) return;
 
-        for(String entry : path.split(java.util.regex.Pattern.quote(java.io.File.pathSeparator))) {
+        for(String entry : path.split(Pattern.quote(File.pathSeparator))) {
             if(entry.isBlank()) continue;
             try {
                 directories.add(Path.of(entry));
