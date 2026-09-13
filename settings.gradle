@@ -7,6 +7,9 @@ pluginManagement {
     }
 }
 
+org.apache.tools.ant.DirectoryScanner.defaultExcludes.findAll { it.startsWith('**/.') }
+.each { org.apache.tools.ant.DirectoryScanner.removeDefaultExclude(it) }
+
 rootProject.name = "KubeX"
 include("core")
 include("neoforge")
