@@ -11,6 +11,13 @@ import com.ourgram.kubex.sourcemap.SourceMapService;
 public final class RuntimeReporter {
     private final SourceMapService sourceMapService = new SourceMapService();
 
+    public String reportSource(Path gameRoot, String detail, String sourceFile, int line, int column) {
+        String message = "[KubeX] " + sourceFile + ":" + line + ":" + column + "\n" + detail;
+        if(sourceFile.startsWith("kubex/output/")) return message + "\nOriginal source mapping unavailable.";
+        String frame = buildContextFrame(gameRoot.resolve(sourceFile), line, column);
+        return frame == null ? message : message + "\n\n" + frame;
+    }
+
     public String report(Path gameRoot, Object error, String scriptGroup, int generatedLine, int generatedColumn, String fallbackSourceFile, int fallbackSourceLine, int fallbackSourceColumn) {
         String detail = errorMessage(error);
         String generatedPosition = scriptGroup + "/main.js:" + generatedLine + ":" + generatedColumn;

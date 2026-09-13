@@ -2,7 +2,6 @@ package com.ourgram.kubex.sourcemap;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -17,6 +16,21 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class SourceMapServiceTest {
     private final SourceMapService service = new SourceMapService();
 
+    @Test
+    void doesNotUsePreviousLineForUnmappedPosition() throws IOException {
+        var result = SourceMapService.lookupSource("""
+        {"version":3,"sources":["../src/main.ts"],"mappings":"AAAA;"}
+        """, 2, 1);
+        org.junit.jupiter.api.Assertions.assertNull(result);
+    }
+
+    @Test
+    void respectsUnmappedSegmentsOnTheSameLine() throws IOException {
+        org.junit.jupiter.api.Assertions.assertNull(SourceMapService.lookupSource("""
+        {"version":3,"sources":["../src/main.ts"],"mappings":"AAAA,K"}
+        """, 1, 6));
+    }
+
     @TempDir
     Path tempDir;
 
@@ -24,7 +38,8 @@ class SourceMapServiceTest {
     void resolvesGeneratedPositionBackToWorkspaceSource() throws IOException {
         Path sourceFile = tempDir.resolve("kubex/src/server_scripts/main.ts");
         Files.createDirectories(sourceFile.getParent());
-        Files.writeString(sourceFile, String.join("\n",
+        Files.writeString(sourceFile, String.join(
+            "\n",
             "const ignored = 0;",
             "const alsoIgnored = 1;",
             "function shinyStar() {",

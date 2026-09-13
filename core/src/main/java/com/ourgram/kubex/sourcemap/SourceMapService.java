@@ -261,6 +261,10 @@ public final class SourceMapService {
                         int[] values = decodeSegment(segment);
                         previousGeneratedColumn += values[0];
                         if(values.length < 4) {
+                            if(generatedLineState == targetLine && previousGeneratedColumn <= targetColumn) {
+                                bestEntry = null;
+                                bestGeneratedColumn = previousGeneratedColumn;
+                            }
                             continue;
                         }
 
@@ -284,12 +288,7 @@ public final class SourceMapService {
         }
 
         SourceMapEntry lookupClosest(int generatedLine, int generatedColumn) throws IOException {
-            for(int line = generatedLine; line >= 1; line--) {
-                int column = line == generatedLine ? generatedColumn : Integer.MAX_VALUE;
-                SourceMapEntry entry = lookup(line, column);
-                if(entry != null) return entry;
-            }
-            return null;
+            return lookup(generatedLine, generatedColumn);
         }
 
         private int[] decodeSegment(String segment) throws IOException {

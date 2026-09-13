@@ -17,7 +17,18 @@ public final class RuntimeBridge {
     public static UnhandledRejections.Pending trackUnhandled(String detail, String scriptGroup, int line, int column) {
         String message = report(detail, scriptGroup, line, column, scriptGroup + "/main.js", line, column);
         return ("client_scripts".equals(scriptGroup) ? CLIENT_REJECTIONS : SERVER_REJECTIONS)
-            .track("[KubeX] Unhandled Promise rejection\n" + message);
+        .track("[KubeX] Unhandled Promise rejection\n" + message);
+    }
+
+    public static String reportSource(String detail, String file, int line, int column) {
+        Path root = gameRoot;
+        if(root == null) throw new IllegalStateException("RuntimeBridge has not been initialized");
+        return REPORT_SERVICE.reportSource(root, detail, file, line, column);
+    }
+
+    public static UnhandledRejections.Pending trackUnhandledAt(String detail, String scriptGroup, String file, int line, int column) {
+        return ("client_scripts".equals(scriptGroup) ? CLIENT_REJECTIONS : SERVER_REJECTIONS)
+        .track("[KubeX] Unhandled Promise rejection\n" + reportSource(detail, file, line, column));
     }
 
     public static void tickClient(Consumer<String> reporter) {

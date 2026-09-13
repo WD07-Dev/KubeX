@@ -29,11 +29,16 @@ import dev.latvian.mods.rhino.ast.*;
 import dev.latvian.mods.rhino.Token;
 import java.util.function.Function;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.LinkedHashSet;
 import java.util.Set;
 import java.util.function.Consumer;
+import java.util.function.IntFunction;
+import java.util.stream.IntStream;
 import java.lang.reflect.Method;
 
 public final class AsyncRewriter implements CompilerHelper {
@@ -75,11 +80,23 @@ public final class AsyncRewriter implements CompilerHelper {
     );
 
     @Override
+    public Phase phase() {
+        return Phase.BEFORE_PACKAGE_REMOVAL;
+    }
+
+    @Override
     public String rewrite(AstRoot root, String source) {
+        return rewrite(root, source, offset -> null);
+    }
+
+    @Override
+    public String rewrite(AstRoot root, String source, IntFunction<String> location) {
         String rewritten = source;
+        int[] origins = IntStream.range(0, source.length()).toArray();
         while(true) {
-            List<Edit> edits = innermost(generatorEdits(parse(rewritten), rewritten));
+            List<Edit> edits = innermost(generatorEdits(parse(rewritten), rewritten, origins, location));
             if(edits.isEmpty()) break;
+            origins = updateOrigins(origins, edits);
             rewritten = applyEdits(rewritten, edits);
         }
         while(true) {
@@ -89,7 +106,19 @@ public final class AsyncRewriter implements CompilerHelper {
         }
     }
 
-    private List<Edit> generatorEdits(AstRoot root, String source) {
+    private int[] updateOrigins(int[] origins, List<Edit> edits) {
+        edits.sort(Comparator.comparingInt(Edit::start).reversed());
+        for(Edit edit : edits) {
+            int[] updated = new int[origins.length - (edit.end() - edit.start()) + edit.replacement().length()];
+            System.arraycopy(origins, 0, updated, 0, edit.start());
+            Arrays.fill(updated, edit.start(), edit.start() + edit.replacement().length(), -1);
+            System.arraycopy(origins, edit.end(), updated, edit.start() + edit.replacement().length(), origins.length - edit.end());
+            origins = updated;
+        }
+        return origins;
+    }
+
+    private List<Edit> generatorEdits(AstRoot root, String source, int[] origins, IntFunction<String> location) {
         List<Edit> edits = new ArrayList<>();
         visit(root, node -> {
             if(node instanceof FunctionNode function && function.isGenerator()) {
@@ -99,14 +128,14 @@ public final class AsyncRewriter implements CompilerHelper {
                 });
                 if(!nested[0]) edits.add(new Edit(
                     functionStart(function, source),
-                    function.getAbsolutePosition() + function.getLength(), rewriteGenerator(function, source)
+                    function.getAbsolutePosition() + function.getLength(), rewriteGenerator(function, source, origins, location)
                 ));
             }
         });
         return edits;
     }
 
-    private String rewriteGenerator(FunctionNode function, String source) {
+    private String rewriteGenerator(FunctionNode function, String source, int[] origins, IntFunction<String> location) {
         if(!(function.getBody() instanceof Block body)) {
             throw unsupported(function, "expression-bodied async functions");
         }
@@ -114,7 +143,7 @@ public final class AsyncRewriter implements CompilerHelper {
         String name = function.getName();
         String parameters = function.getParams().stream().map(parameter -> slice(source, parameter))
         .reduce((left, right) -> left + ", " + right).orElse("");
-        ChainBuilder builder = new ChainBuilder(source);
+        ChainBuilder builder = new ChainBuilder(source, origins, location);
         String chain = builder.block(body);
         return "function " + name + "(" + parameters + ") {\n"
         + (builder.variables.isEmpty() ? "" : "var " + String.join(", ", builder.variables) + ";\n")
@@ -125,14 +154,18 @@ public final class AsyncRewriter implements CompilerHelper {
 
     private final class ChainBuilder {
         private final String source;
-        private final Set<String> variables = new java.util.LinkedHashSet<>();
+        private final Set<String> variables = new LinkedHashSet<>();
         private final List<String> declarations = new ArrayList<>();
         private final String assigned;
         private int temporary;
         private final String originalArguments;
+        private final int[] origins;
+        private final IntFunction<String> location;
 
-        private ChainBuilder(String source) {
+        private ChainBuilder(String source, int[] origins, IntFunction<String> location) {
             this.source = source;
+            this.origins = origins;
+            this.location = location;
             String name = "__kxAssigned";
             while(source.contains(name)) name += "_";
             assigned = name;
@@ -141,7 +174,7 @@ public final class AsyncRewriter implements CompilerHelper {
 
         private String block(AstNode node) {
             String chain = "KubeXPromise.resolve()";
-            if(node instanceof Block || node.getClass() == dev.latvian.mods.rhino.ast.Scope.class) {
+            if(node instanceof Block || node.getClass() == Scope.class) {
                 for(Node child = node.getFirstChild(); child != null; child = child.getNext()) {
                     if(child instanceof AstNode statement) chain = append(chain, statement);
                 }
@@ -177,6 +210,19 @@ public final class AsyncRewriter implements CompilerHelper {
         }
 
         private String lower(AstNode node, Function<String, String> next) {
+            return lowerExpression(node, expression -> {
+                String position = position(node);
+                if(position != null) expression = "__kubexAt(function() { return (" + expression + "); }.bind(this), " + position + ")";
+                return next.apply(expression);
+            });
+        }
+
+        private String position(AstNode node) {
+            int offset = origins[node.getAbsolutePosition()];
+            return offset < 0 ? null : location.apply(offset);
+        }
+
+        private String lowerExpression(AstNode node, Function<String, String> next) {
             if(!suspends(node)) return next.apply(original(node));
             if(node instanceof ParenthesizedExpression grouped) return lower(grouped.getExpression(), next);
             if(node instanceof Yield yielded) {
@@ -323,7 +369,7 @@ public final class AsyncRewriter implements CompilerHelper {
         }
 
         private String statement(AstNode node) {
-            if(node instanceof Block || node.getClass() == dev.latvian.mods.rhino.ast.Scope.class) return "return " + block(node) + ";";
+            if(node instanceof Block || node.getClass() == Scope.class) return "return " + block(node) + ";";
             if(node instanceof ReturnStatement returned) {
                 return returned.getReturnValue() == null ? "return {kind: 'return'};"
                 : lower(returned.getReturnValue(), value -> "return {kind: 'return', value: " + value + "};");
@@ -421,7 +467,7 @@ public final class AsyncRewriter implements CompilerHelper {
                 return "return " + chain + ";";
             }
             if(node instanceof ThrowStatement thrown) return lower(thrown.getExpression(), value -> "throw __kubexCaptureError(" + value + ");");
-            if(node instanceof dev.latvian.mods.rhino.ast.EmptyExpression || node instanceof dev.latvian.mods.rhino.ast.EmptyStatement) return "";
+            if(node instanceof EmptyExpression || node instanceof EmptyStatement) return "";
             throw unsupported(node, node.getClass().getSimpleName());
         }
 
@@ -553,7 +599,7 @@ public final class AsyncRewriter implements CompilerHelper {
     }
 
     private void visit(AstNode root, Consumer<AstNode> consumer) {
-        visit(root, java.util.Collections.newSetFromMap(new IdentityHashMap<>()), consumer);
+        visit(root, Collections.newSetFromMap(new IdentityHashMap<>()), consumer);
     }
 
     private void visit(AstNode node, Set<AstNode> visited, Consumer<AstNode> consumer) {

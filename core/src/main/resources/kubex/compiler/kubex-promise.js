@@ -140,6 +140,10 @@ function __kubexTrackRejection(error, origin) {
             } catch(unavailable) {}
         }
         if(!__kubexPromiseBridge) return null;
+        if(error && error.__kubexLocation) {
+            var location = error.__kubexLocation;
+            return __kubexPromiseBridge.trackUnhandledAt(String(error), "${promiseScriptGroup}", location[0], location[1], location[2]);
+        }
         if(typeof Error.captureStackTrace === "function") Error.captureStackTrace(origin);
         var stack = error && error.stack ? String(error.stack) : String(origin.stack || "");
         var frames = /main\.js:(\d+)(?::(\d+))?/g;
@@ -166,6 +170,19 @@ function __kubexCaptureError(error) {
         }
     } catch(ignored) {}
     return error;
+}
+
+function __kubexAt(action, location) {
+    try {
+        return action();
+    } catch(error) {
+        try {
+            if(error && (typeof error === "object" || typeof error === "function") && !error.__kubexLocation) {
+                Object.defineProperty(error, "__kubexLocation", {value: location});
+            }
+        } catch(ignored) {}
+        throw error;
+    }
 }
 
 KubeXPromise.resolve = function (value) {

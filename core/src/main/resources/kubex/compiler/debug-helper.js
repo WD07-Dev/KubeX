@@ -8,7 +8,8 @@ var __kubexReport = typeof __kubexReport === "function" ? __kubexReport : functi
     var message = "[KubeX Debug] " + meta.file + ":" + meta.line + ":" + meta.column + " " + detail;
     if(__kubexRuntime) {
         try {
-            message = String(__kubexRuntime.report(
+            var location = error && error.__kubexLocation;
+            message = location ? String(__kubexRuntime.reportSource(detail, location[0], location[1], location[2])) : String(__kubexRuntime.report(
                 error,
                 meta.scriptGroup,
                 generatedLine,

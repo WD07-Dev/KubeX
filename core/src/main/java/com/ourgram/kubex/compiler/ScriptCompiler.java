@@ -1,6 +1,7 @@
 package com.ourgram.kubex.compiler;
 
 import com.ourgram.kubex.compiler.helper.CompilerHelper;
+import com.ourgram.kubex.compiler.helper.CompilerHelper.Phase;
 import com.ourgram.kubex.compiler.helper.AsyncRewriter;
 import com.ourgram.kubex.compiler.helper.LoopRewriter;
 import com.ourgram.kubex.sourcemap.SourceMapService;
@@ -24,6 +25,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
@@ -31,6 +33,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Consumer;
+import java.util.function.IntFunction;
 import java.lang.reflect.Method;
 
 public final class ScriptCompiler {
@@ -76,7 +79,17 @@ public final class ScriptCompiler {
     }
 
     public CompileResult compile(String fileName, String source, CompileOptions options) {
-        AstRoot firstPassRoot = parseScript(source);
+        String prepared = applyHelpers(source, Phase.BEFORE_PACKAGE_REMOVAL, offset -> {
+            LineColumn position = lineColumnAt(source, offset);
+            if(options.sourceMapContent() != null) {
+                try {
+                    var mapped = SourceMapService.lookupSource(options.sourceMapContent(), position.line(), position.column());
+                    if(mapped != null) return "[\"" + escapeJs(normalizeSourcePath(mapped.sourcePath())) + "\", " + mapped.sourceLine() + ", " + mapped.sourceColumn() + "]";
+                } catch(IOException ignored) {}
+            }
+            return "[\"kubex/output/" + escapeJs(fileName) + "\", " + position.line() + ", " + position.column() + "]";
+        });
+        AstRoot firstPassRoot = parseScript(prepared);
         Map<String, String> packageAliases = collectPackageAliases(firstPassRoot);
         List<Edit> firstPassEdits = new ArrayList<>();
         firstPassEdits.addAll(collectPackageAliasRemovalEdits(firstPassRoot));
@@ -84,8 +97,8 @@ public final class ScriptCompiler {
             firstPassEdits.addAll(collectRequireHelperRemovalEdits(firstPassRoot));
         }
 
-        String firstPass = applyEdits(source, firstPassEdits);
-        firstPass = applyHelpers(firstPass);
+        String firstPass = applyEdits(prepared, firstPassEdits);
+        firstPass = applyHelpers(firstPass, Phase.AFTER_PACKAGE_REMOVAL, offset -> null);
         if(firstPass.contains("KubeXPromise") || firstPass.contains("__kubexAwait")) {
             firstPass = ASYNC_RUNTIME.replace("${promiseScriptGroup}", escapeJs(scriptGroupFor(fileName))) + "\n" + firstPass;
         }
@@ -115,10 +128,11 @@ public final class ScriptCompiler {
         return new CompileResult(fileName, source, transformed, buildGeneratedToOriginalLineMap(source, transformed));
     }
 
-    private String applyHelpers(String source) {
+    private String applyHelpers(String source, Phase phase, IntFunction<String> location) {
         String current = source;
         for(CompilerHelper helper : HELPERS) {
-            current = helper.rewrite(parseScript(current), current);
+            if(helper.phase() != phase) continue;
+            current = helper.rewrite(parseScript(current), current, location);
         }
         return current;
     }
@@ -173,7 +187,7 @@ public final class ScriptCompiler {
 
     private List<Node> collectStatementContainers(AstRoot root) {
         List<Node> containers = new ArrayList<>();
-        Set<Node> seen = java.util.Collections.newSetFromMap(new IdentityHashMap<>());
+        Set<Node> seen = Collections.newSetFromMap(new IdentityHashMap<>());
         visitAst(root, node -> {
             if((node instanceof AstRoot || node instanceof Block) && seen.add(node)) {
                 containers.add(node);
@@ -567,7 +581,7 @@ public final class ScriptCompiler {
     }
 
     private void visitAst(AstNode root, Consumer<AstNode> consumer) {
-        visitAst(root, java.util.Collections.newSetFromMap(new IdentityHashMap<>()), consumer);
+        visitAst(root, Collections.newSetFromMap(new IdentityHashMap<>()), consumer);
     }
 
     private void visitAst(AstNode node, Set<AstNode> visited, Consumer<AstNode> consumer) {
@@ -633,6 +647,10 @@ public final class ScriptCompiler {
         }
 
         while(generatedIndex < generatedLines.size()) {
+            if(generatedLines.get(generatedIndex).isBlank()) {
+                lineMap[generatedIndex++] = lastMappedOriginal;
+                continue;
+            }
             if(originalIndex < originalLines.size() && sameLine(originalLines.get(originalIndex), generatedLines.get(generatedIndex))) {
                 lastMappedOriginal = originalIndex + 1;
                 lineMap[generatedIndex] = lastMappedOriginal;
