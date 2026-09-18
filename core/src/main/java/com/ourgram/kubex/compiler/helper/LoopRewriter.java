@@ -4,6 +4,8 @@ import dev.latvian.mods.rhino.Node;
 import dev.latvian.mods.rhino.ast.AstNode;
 import dev.latvian.mods.rhino.ast.AstRoot;
 import dev.latvian.mods.rhino.ast.ExpressionStatement;
+import dev.latvian.mods.rhino.ast.ContinueStatement;
+import dev.latvian.mods.rhino.ast.IfStatement;
 import dev.latvian.mods.rhino.ast.ForLoop;
 import dev.latvian.mods.rhino.ast.FunctionCall;
 import dev.latvian.mods.rhino.ast.FunctionNode;
@@ -33,12 +35,13 @@ public final class LoopRewriter implements CompilerHelper {
     ) {}
 
     private static final String LOOP_REPLACEMENT =
-        "for (%s; %s; %s) {\n"
-            + "  (function(%s) %s)(%s);\n"
-            + "}";
+    "for (%s; %s; %s) {\n"
+    + "  (function(%s) %s)(%s);\n"
+    + "}";
     private static final Pattern LOOP_HELPER_NAME_PATTERN = Pattern.compile("_loop\\d*");
     private static final List<String> AST_CHILD_GETTERS = List.of(
         "getExpression",
+        "getReturnValue",
         "getTarget",
         "getInitializer",
         "getCondition",
@@ -124,22 +127,39 @@ public final class LoopRewriter implements CompilerHelper {
         if(!(body instanceof Node bodyNode)) return false;
 
         List<AstNode> statements = childStatements(bodyNode);
-        if(statements.size() != 1 || !(statements.get(0) instanceof ExpressionStatement expressionStatement)) {
-            return false;
-        }
+        FunctionCall call = helperCall(statements);
+        if(call == null) return false;
 
-        if(!(expressionStatement.getExpression() instanceof FunctionCall call)) {
-            return false;
-        }
+        return call.getTarget() instanceof Name target && helperName.equals(target.getIdentifier())
+        && call.getArguments().isEmpty() && loopName.getIdentifier() != null;
+    }
 
-        return call.getTarget() instanceof Name target
-        && helperName.equals(target.getIdentifier())
-        && call.getArguments().isEmpty()
-        && loopName.getIdentifier() != null;
+    private FunctionCall helperCall(List<AstNode> statements) {
+        if(statements.size() != 1) return null;
+        AstNode expression;
+        if(statements.get(0) instanceof ExpressionStatement statement) {
+            expression = statement.getExpression();
+        }else if(statements.get(0) instanceof IfStatement branch
+            && branch.getElsePart() == null
+            && branch.getThenPart() instanceof ContinueStatement continued
+            && continued.getLabel() == null) {
+            expression = branch.getCondition();
+        }else {
+            return null;
+        }
+        return expression instanceof FunctionCall call ? call : null;
     }
 
     private String buildLoopReplacementSource(ForLoop forLoop, LoopHelper helper, String source) {
         String loopVariable = ((Name) ((VariableDeclaration) forLoop.getInitializer()).getVariables().get(0).getTarget()).getIdentifier();
+        FunctionCall call = helperCall(childStatements(forLoop.getBody()));
+        if(childStatements(forLoop.getBody()).get(0) instanceof IfStatement) {
+            String invocation = "(function(" + loopVariable + ") " + slice(source, helper.functionNode().getBody()) + ")(" + loopVariable + ")";
+            int start = forLoop.getAbsolutePosition();
+            int callStart = call.getAbsolutePosition() - start;
+            String loop = slice(source, forLoop);
+            return loop.substring(0, callStart) + invocation + loop.substring(callStart + call.getLength());
+        }
         return formatLoopReplacement(
             slice(source, forLoop.getInitializer()),
             slice(source, forLoop.getCondition()),
@@ -155,9 +175,7 @@ public final class LoopRewriter implements CompilerHelper {
 
         while(cursor < current.length()) {
             int varIndex = current.indexOf("var _loop", cursor);
-            if(varIndex < 0) {
-                return current;
-            }
+            if(varIndex < 0) return current;
 
             LoopHelperMatch match = matchLoopHelperPattern(current, varIndex);
             if(match == null) {
