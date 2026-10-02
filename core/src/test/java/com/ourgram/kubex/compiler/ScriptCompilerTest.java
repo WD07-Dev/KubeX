@@ -157,7 +157,8 @@ class ScriptCompilerTest {
         String output = compiler.compile("server_scripts.js", source).outputSource();
 
         assertFalse(output.contains("var _loop = function _loop()"));
-        assertTrue(output.contains("for (var slot = 0; slot < partyPokemon.length; slot++) {"));
+        assertTrue(output.contains("var slot;"));
+        assertTrue(output.contains("for (    slot = 0; slot < partyPokemon.length; slot++) {"));
         assertTrue(output.contains("(function(slot) {"));
         assertTrue(output.contains("var pokemon = partyPokemon[slot];"));
         assertTrue(output.contains("})(slot);"));
@@ -222,7 +223,8 @@ class ScriptCompilerTest {
 
         assertFalse(output.contains("var _loop = function _loop()"), diagnostics);
         assertFalse(output.contains("_loop();"), diagnostics);
-        assertTrue(output.contains("for (var slot = 0; slot < partyPokemon.length; slot++) {"), diagnostics);
+        assertTrue(output.contains("var slot;"), diagnostics);
+        assertTrue(output.contains("for (    slot = 0; slot < partyPokemon.length; slot++) {"), diagnostics);
         assertTrue(output.contains("(function(slot) {"), diagnostics);
         assertTrue(output.contains("var pokemon = partyPokemon[slot];"), diagnostics);
         assertTrue(output.contains("})(slot);"), diagnostics);

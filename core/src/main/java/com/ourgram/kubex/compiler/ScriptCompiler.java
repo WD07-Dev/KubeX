@@ -4,6 +4,7 @@ import com.ourgram.kubex.compiler.helper.CompilerHelper;
 import com.ourgram.kubex.compiler.helper.CompilerHelper.Phase;
 import com.ourgram.kubex.compiler.helper.AsyncRewriter;
 import com.ourgram.kubex.compiler.helper.LoopRewriter;
+import com.ourgram.kubex.compiler.helper.LoopScopeRewriter;
 import com.ourgram.kubex.sourcemap.SourceMapService;
 import dev.latvian.mods.rhino.CompilerEnvirons;
 import dev.latvian.mods.rhino.Context;
@@ -44,7 +45,8 @@ public final class ScriptCompiler {
 
     private static final List<CompilerHelper> HELPERS = List.of(
         new AsyncRewriter(),
-        new LoopRewriter()
+        new LoopRewriter(),
+        new LoopScopeRewriter()
     );
     private static final String BANNER = loadResource("kubex/compiler/banner.js");
     private static final String ASYNC_RUNTIME = loadResource("kubex/compiler/kubex-promise.js");
